@@ -51,6 +51,7 @@ In order, from `supabase/migrations/`:
 | `012_analytics_rate_limits.sql` | Creates the table + function backing the app's rate limiter (no Redis; a single atomic Postgres UPSERT instead). |
 | `013_analytics_ai_query_log.sql` | Creates `analytics_ai_query_log`, used instead of `copilot_chats`/`copilot_messages`. See the comment in that file for why (short version: `copilot_chats.admin_id` is a NOT NULL FK into `users` for an existing in-app admin-copilot feature; this dashboard's shared login has no corresponding `users.id` to attach). |
 | `014_restore_service_role_grants.sql` | Only needed if `service_role` is missing `USAGE` on the `public` schema in your project (it should have this by default on any fresh Supabase project; run this if you hit `permission denied for schema public` errors). |
+| `015_activity_breakdown_functions.sql` | SQL functions backing the Overview page's activity widgets and the Growth/Activation/Engagement/Retention dashboards (DAU/WAU/MAU, new/active users per day, activity by hour, active users by proximity, feature adoption, activation funnel, retention cohorts). Called live via `.rpc()`, not nightly-refreshed. |
 
 This codebase intentionally never runs these migrations for you. Creating
 login roles and cron schedules are changes to your production database's
@@ -99,6 +100,23 @@ in CI, or automatically via the Vercel Cron job already configured in
 ```bash
 npm run dev
 ```
+
+## Activity metrics are proxies, not a dedicated event log
+
+There is no app-analytics event pipeline anywhere in this schema (no
+session/screen-view/request tracking table exists). DAU/WAU/MAU, "active
+users per day," "activity by hour," "feature adoption," the activation
+funnel, and the retention cohorts (`src/lib/db/activityBreakdown.ts`,
+migration `015`) are all built from real but indirect signals: a user
+counts as "active" if they sent a chat message, recorded a trust action,
+or joined a pool. That's genuine activity, just not the same thing as an
+app-open or screen-view event. Deliberately **not** built, because there's
+no real data to build them from: downloads/install trends (that's
+app-store/attribution data, not in this Postgres database), average
+session duration, and average requests per session (no session or
+request-level logging exists here). `user_recording_quotas` has the right
+shape for "time spent per screen" (`screen_route`, `seconds_used`) but
+currently holds 1 row total, so it isn't wired up to a widget yet.
 
 ## Why the service role key (not RLS) for dashboard reads
 
