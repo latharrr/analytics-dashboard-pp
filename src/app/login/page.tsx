@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserClient } from "@/lib/supabase/browserClient";
+import { Spinner } from "@/components/Spinner";
 
 function LoginForm() {
   const router = useRouter();
@@ -68,9 +69,10 @@ function LoginForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
         >
-          {loading ? "Signing in..." : "Sign in"}
+          {loading && <Spinner className="h-4 w-4" />}
+          {loading ? "Signing in…" : "Sign in"}
         </button>
       </form>
     </div>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MODULES } from "@/lib/modules";
 import { formatValue, humanizeKey } from "@/lib/format";
 import { DATE_TYPES, NUMERIC_TYPES } from "@/lib/columnTypeGroups";
+import { Spinner } from "@/components/Spinner";
 
 const PAGE_SIZE = 50;
 
@@ -255,7 +256,10 @@ export function DataTable() {
             {loading && (
               <tr>
                 <td colSpan={data?.columns.length ?? 1} className="p-4 text-center text-ink-muted">
-                  Loading…
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner className="h-4 w-4" />
+                    Loading…
+                  </span>
                 </td>
               </tr>
             )}
