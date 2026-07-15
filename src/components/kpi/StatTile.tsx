@@ -1,4 +1,4 @@
-import { formatValue, humanizeKey } from "@/lib/format";
+import { formatAsOf, formatValue, humanizeKey } from "@/lib/format";
 
 export interface StatTileProps {
   label: string;
@@ -7,9 +7,11 @@ export interface StatTileProps {
   delta?: number | null;
   /** Set true when a negative delta is actually the desired direction (e.g. churn). */
   invertDelta?: boolean;
+  /** ISO timestamp this value is as of. Shown as a small absolute date/time so there's no ambiguity about freshness. */
+  asOf?: string | null;
 }
 
-export function StatTile({ label, value, delta, invertDelta }: StatTileProps) {
+export function StatTile({ label, value, delta, invertDelta, asOf }: StatTileProps) {
   const hasDelta = typeof delta === "number" && !Number.isNaN(delta);
   const isGood = hasDelta && (invertDelta ? delta! < 0 : delta! > 0);
   const isBad = hasDelta && (invertDelta ? delta! > 0 : delta! < 0);
@@ -26,12 +28,13 @@ export function StatTile({ label, value, delta, invertDelta }: StatTileProps) {
           {delta! > 0 ? "↑" : delta! < 0 ? "↓" : "→"} {Math.abs(delta!).toFixed(1)}%
         </p>
       )}
+      {asOf && <p className="mt-1 text-[11px] text-ink-muted/70">As of {formatAsOf(asOf)}</p>}
     </div>
   );
 }
 
 /** Renders every scalar field of a single-row KPI snapshot as a grid of stat tiles. */
-export function StatTileGrid({ row }: { row: Record<string, unknown> | null }) {
+export function StatTileGrid({ row, asOf }: { row: Record<string, unknown> | null; asOf?: string | null }) {
   if (!row) {
     return <p className="text-sm text-ink-muted">No data yet. Has the materialized view been refreshed?</p>;
   }
@@ -39,7 +42,7 @@ export function StatTileGrid({ row }: { row: Record<string, unknown> | null }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {entries.map(([key, value]) => (
-        <StatTile key={key} label={key} value={value} />
+        <StatTile key={key} label={key} value={value} asOf={asOf} />
       ))}
     </div>
   );

@@ -22,6 +22,17 @@ export function formatValue(value: unknown): string {
   return String(value);
 }
 
+/** Compact absolute date+time, e.g. "Jul 15, 3:00 AM". Used instead of a relative
+ * label ("3h ago") wherever ambiguity about exactly when data is "as of" matters. */
+export function formatAsOf(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function formatRelativeTime(iso: string | null): string {
   if (!iso) return "never";
   const then = new Date(iso).getTime();

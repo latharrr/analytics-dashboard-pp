@@ -1,9 +1,12 @@
-import { getKpiSnapshot } from "@/lib/db/kpi";
+import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import { StatTileGrid } from "@/components/kpi/StatTile";
 import { KpiPageHeader } from "@/components/kpi/KpiPageHeader";
 
 export default async function MonetizationPage() {
-  const monetization = await getKpiSnapshot("mv_monetization_kpis");
+  const [monetization, refreshInfo] = await Promise.all([
+    getKpiSnapshot("mv_monetization_kpis"),
+    getRefreshInfo(),
+  ]);
 
   return (
     <div>
@@ -11,7 +14,7 @@ export default async function MonetizationPage() {
         title="Monetization"
         description="Rental referral clicks, conversions, attributions, and flat leads."
       />
-      <StatTileGrid row={monetization} />
+      <StatTileGrid row={monetization} asOf={refreshInfo?.refreshed_at} />
     </div>
   );
 }

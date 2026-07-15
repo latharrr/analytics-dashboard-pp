@@ -1,5 +1,6 @@
 import { getRetentionCohorts } from "@/lib/db/activityBreakdown";
 import { KpiPageHeader } from "@/components/kpi/KpiPageHeader";
+import { formatAsOf } from "@/lib/format";
 
 function pct(retained: number, cohortSize: number): string {
   if (!cohortSize) return "N/A";
@@ -7,6 +8,7 @@ function pct(retained: number, cohortSize: number): string {
 }
 
 export default async function RetentionPage() {
+  const liveAsOf = new Date().toISOString();
   const cohorts = await getRetentionCohorts();
 
   return (
@@ -15,6 +17,7 @@ export default async function RetentionPage() {
         title="Retention"
         description="Weekly signup cohorts vs. the % who took any proxy-activity action (chat, trust, pool) in each following week. No dedicated retention/session-event log exists yet, so this is built from those same activity signals."
       />
+      <p className="mb-4 text-[11px] text-ink-muted/70">As of {formatAsOf(liveAsOf)}</p>
 
       {cohorts.length === 0 ? (
         <p className="text-sm text-ink-muted">No cohort data yet.</p>

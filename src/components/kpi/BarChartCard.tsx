@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatValue, humanizeKey } from "@/lib/format";
+import { formatAsOf, formatValue, humanizeKey } from "@/lib/format";
 
 export interface BarDatum {
   label: string;
@@ -12,6 +12,8 @@ interface BarChartCardProps {
   title: string;
   data: BarDatum[];
   valueLabel?: string;
+  /** ISO timestamp this data is as of. Shown as a small absolute date/time below the title. */
+  asOf?: string | null;
 }
 
 const WIDTH = 560;
@@ -20,14 +22,15 @@ const PADDING_LEFT = 36;
 const PADDING_BOTTOM = 28;
 const PADDING_TOP = 12;
 
-export function BarChartCard({ title, data, valueLabel = "value" }: BarChartCardProps) {
+export function BarChartCard({ title, data, valueLabel = "value", asOf }: BarChartCardProps) {
   const [hovered, setHovered] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
 
   if (!data.length) {
     return (
       <div className="viz-root rounded-xl border border-border bg-surface p-4">
-        <h3 className="mb-2 text-sm font-medium text-ink">{title}</h3>
+        <h3 className="text-sm font-medium text-ink">{title}</h3>
+        {asOf && <p className="mb-2 text-[11px] text-ink-muted/70">As of {formatAsOf(asOf)}</p>}
         <p className="text-sm text-ink-muted">No data yet.</p>
       </div>
     );
@@ -43,11 +46,14 @@ export function BarChartCard({ title, data, valueLabel = "value" }: BarChartCard
 
   return (
     <div className="viz-root rounded-xl border border-border bg-surface p-4">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-ink">{title}</h3>
+      <div className="mb-2 flex items-start justify-between">
+        <div>
+          <h3 className="text-sm font-medium text-ink">{title}</h3>
+          {asOf && <p className="text-[11px] text-ink-muted/70">As of {formatAsOf(asOf)}</p>}
+        </div>
         <button
           onClick={() => setShowTable((s) => !s)}
-          className="text-xs text-ink-muted underline decoration-dotted"
+          className="shrink-0 text-xs text-ink-muted underline decoration-dotted"
         >
           {showTable ? "Show chart" : "Show table"}
         </button>
