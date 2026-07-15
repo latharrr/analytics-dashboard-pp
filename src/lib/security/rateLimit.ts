@@ -1,7 +1,7 @@
 import { getServiceClient } from "@/lib/supabase/server";
 
 export interface RateLimitOptions {
-  /** Distinguishes routes sharing the same IP, e.g. "ai-query" vs "explorer". */
+  /** Distinguishes routes sharing the same IP, e.g. "explorer" vs "explorer-csv". */
   route: string;
   windowSeconds: number;
   maxRequests: number;

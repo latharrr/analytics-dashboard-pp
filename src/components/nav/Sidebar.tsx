@@ -24,7 +24,6 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/matching", label: "Matching" },
   { href: "/ai-copilot", label: "AI/Copilot" },
   { href: "/explorer", label: "Data Explorer" },
-  { href: "/ai-query", label: "AI Query" },
   { href: "/schema", label: "Schema Browser" },
 ];
 

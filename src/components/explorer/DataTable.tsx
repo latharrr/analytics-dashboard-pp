@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MODULES } from "@/lib/modules";
 import { formatValue, humanizeKey } from "@/lib/format";
+import { DATE_TYPES, NUMERIC_TYPES } from "@/lib/columnTypeGroups";
 
 const PAGE_SIZE = 50;
 
@@ -10,7 +11,14 @@ interface ApiResponse {
   rows: Record<string, unknown>[];
   count: number;
   columns: string[];
+  columnTypes: Record<string, string>;
   error?: string;
+}
+
+function sortDirLabels(columnType: string | undefined): { asc: string; desc: string } {
+  if (columnType && NUMERIC_TYPES.has(columnType)) return { asc: "Low to High", desc: "High to Low" };
+  if (columnType && DATE_TYPES.has(columnType)) return { asc: "Oldest to Recent", desc: "Recent to Oldest" };
+  return { asc: "A to Z", desc: "Z to A" };
 }
 
 export function DataTable() {
@@ -19,6 +27,9 @@ export function DataTable() {
   const [sortColumn, setSortColumn] = useState<string | undefined>(undefined);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [dateColumn, setDateColumn] = useState<string>("");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +38,9 @@ export function DataTable() {
     setPage(1);
     setSortColumn(undefined);
     setFilters({});
+    setDateColumn("");
+    setDateFrom("");
+    setDateTo("");
   }, [table]);
 
   useEffect(() => {
@@ -43,6 +57,11 @@ export function DataTable() {
     }
     for (const [key, value] of Object.entries(filters)) {
       if (value) params.set(key, value);
+    }
+    if (dateColumn && (dateFrom || dateTo)) {
+      params.set("dateColumn", dateColumn);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
     }
 
     fetch(`/api/explorer/${table}?${params.toString()}`, { signal: controller.signal })
@@ -61,9 +80,9 @@ export function DataTable() {
       .finally(() => setLoading(false));
 
     return () => controller.abort();
-  }, [table, page, sortColumn, sortDir, filters]);
+  }, [table, page, sortColumn, sortDir, filters, dateColumn, dateFrom, dateTo]);
 
-  const csvHref = useMemo(() => {
+  const exportParams = useMemo(() => {
     const params = new URLSearchParams();
     if (sortColumn) {
       params.set("sort", sortColumn);
@@ -72,8 +91,13 @@ export function DataTable() {
     for (const [key, value] of Object.entries(filters)) {
       if (value) params.set(key, value);
     }
-    return `/api/explorer/${table}/csv?${params.toString()}`;
-  }, [table, sortColumn, sortDir, filters]);
+    if (dateColumn && (dateFrom || dateTo)) {
+      params.set("dateColumn", dateColumn);
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+    }
+    return params.toString();
+  }, [sortColumn, sortDir, filters, dateColumn, dateFrom, dateTo]);
 
   function toggleSort(column: string) {
     if (sortColumn === column) {
@@ -84,11 +108,17 @@ export function DataTable() {
     }
   }
 
+  const dateColumns = useMemo(
+    () => Object.entries(data?.columnTypes ?? {}).filter(([, type]) => DATE_TYPES.has(type)).map(([name]) => name),
+    [data?.columnTypes]
+  );
+
+  const currentSortLabels = sortDirLabels(sortColumn ? data?.columnTypes[sortColumn] : undefined);
   const totalPages = data ? Math.max(1, Math.ceil(data.count / PAGE_SIZE)) : 1;
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <select
           value={table}
           onChange={(e) => setTable(e.target.value)}
@@ -107,12 +137,96 @@ export function DataTable() {
 
         {data && <span className="text-sm text-ink-muted">{data.count.toLocaleString()} rows</span>}
 
-        <a
-          href={csvHref}
-          className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-        >
-          Export CSV
-        </a>
+        <div className="ml-auto flex items-center gap-2">
+          <a
+            href={`/api/explorer/${table}/csv?${exportParams}`}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
+          >
+            Export CSV
+          </a>
+          <a
+            href={`/api/explorer/${table}/xlsx?${exportParams}`}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
+          >
+            Export XLS
+          </a>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-end gap-4 rounded-xl border border-border bg-surface-raised p-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink-muted">Sort by</label>
+          <div className="flex gap-2">
+            <select
+              value={sortColumn ?? ""}
+              onChange={(e) => setSortColumn(e.target.value || undefined)}
+              className="rounded-lg border border-border bg-surface px-2 py-1 text-sm text-ink"
+            >
+              <option value="">None</option>
+              {data?.columns.map((c) => (
+                <option key={c} value={c}>
+                  {humanizeKey(c)}
+                </option>
+              ))}
+            </select>
+            <select
+              value={sortDir}
+              onChange={(e) => setSortDir(e.target.value as "asc" | "desc")}
+              disabled={!sortColumn}
+              className="rounded-lg border border-border bg-surface px-2 py-1 text-sm text-ink disabled:opacity-40"
+            >
+              <option value="asc">{currentSortLabels.asc}</option>
+              <option value="desc">{currentSortLabels.desc}</option>
+            </select>
+          </div>
+        </div>
+
+        {dateColumns.length > 0 && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-ink-muted">Filter by date</label>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={dateColumn}
+                onChange={(e) => setDateColumn(e.target.value)}
+                className="rounded-lg border border-border bg-surface px-2 py-1 text-sm text-ink"
+              >
+                <option value="">Column…</option>
+                {dateColumns.map((c) => (
+                  <option key={c} value={c}>
+                    {humanizeKey(c)}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                disabled={!dateColumn}
+                className="rounded-lg border border-border bg-surface px-2 py-1 text-sm text-ink disabled:opacity-40"
+              />
+              <span className="self-center text-xs text-ink-muted">to</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                disabled={!dateColumn}
+                className="rounded-lg border border-border bg-surface px-2 py-1 text-sm text-ink disabled:opacity-40"
+              />
+              {(dateColumn || dateFrom || dateTo) && (
+                <button
+                  onClick={() => {
+                    setDateColumn("");
+                    setDateFrom("");
+                    setDateTo("");
+                  }}
+                  className="rounded-lg border border-border px-2 py-1 text-xs text-ink-muted hover:bg-surface"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {error && <p className="mb-3 text-sm text-red-500">{error}</p>}

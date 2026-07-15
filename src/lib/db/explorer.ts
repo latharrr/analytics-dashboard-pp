@@ -1,10 +1,18 @@
+import * as XLSX from "xlsx";
 import { getServiceClient } from "@/lib/supabase/server";
 import { ALL_TRACKED_TABLES } from "@/lib/modules";
+import { DATE_TYPES } from "@/lib/columnTypeGroups";
 
 const TEXT_TYPES = new Set(["text", "character varying", "character", "uuid", "citext", "name"]);
 
 export function isExplorableTable(table: string): boolean {
   return ALL_TRACKED_TABLES.includes(table);
+}
+
+export interface DateRangeFilter {
+  column: string;
+  from?: string;
+  to?: string;
 }
 
 export interface QueryTableOptions {
@@ -15,6 +23,7 @@ export interface QueryTableOptions {
   filters: Record<string, string>;
   /** column name -> Postgres data_type, from the schema cache. */
   columnTypes: Record<string, string>;
+  dateRange?: DateRangeFilter;
 }
 
 export interface QueryTableResult {
@@ -24,7 +33,7 @@ export interface QueryTableResult {
 
 export async function queryTable(
   table: string,
-  { page, pageSize, sortColumn, sortDir, filters, columnTypes }: QueryTableOptions
+  { page, pageSize, sortColumn, sortDir, filters, columnTypes, dateRange }: QueryTableOptions
 ): Promise<QueryTableResult> {
   if (!isExplorableTable(table)) {
     throw new Error(`Table "${table}" is not explorable`);
@@ -42,6 +51,11 @@ export async function queryTable(
     } else {
       query = query.eq(column, value);
     }
+  }
+
+  if (dateRange?.column && dateRange.column in columnTypes && DATE_TYPES.has(columnTypes[dateRange.column])) {
+    if (dateRange.from) query = query.gte(dateRange.column, dateRange.from);
+    if (dateRange.to) query = query.lte(dateRange.column, dateRange.to);
   }
 
   if (sortColumn && sortColumn in columnTypes) {
@@ -74,4 +88,21 @@ export function toCsv(rows: Record<string, unknown>[]): string {
     ...rows.map((row) => headers.map((h) => escape(row[h])).join(",")),
   ];
   return lines.join("\n");
+}
+
+/** Builds a real .xlsx workbook buffer (one sheet) from query result rows. */
+export function toXlsxBuffer(rows: Record<string, unknown>[], sheetName: string): Buffer {
+  const cellSafeRows = rows.map((row) => {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row)) {
+      out[key] = value !== null && typeof value === "object" ? JSON.stringify(value) : value;
+    }
+    return out;
+  });
+  const sheet = XLSX.utils.json_to_sheet(cellSafeRows);
+  const workbook = XLSX.utils.book_new();
+  // Sheet names are capped at 31 chars and can't contain []:*?/\ in Excel.
+  const safeSheetName = sheetName.replace(/[[\]:*?/\\]/g, "_").slice(0, 31);
+  XLSX.utils.book_append_sheet(workbook, sheet, safeSheetName || "Sheet1");
+  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isExplorableTable, queryTable, toCsv } from "@/lib/db/explorer";
+import { isExplorableTable, queryTable, toXlsxBuffer } from "@/lib/db/explorer";
 import { getColumnTypesForTable } from "@/lib/db/schemaCache";
 import { parseExportParams } from "@/lib/db/exportParams";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 import { getClientIp } from "@/lib/security/clientIp";
 
-const CSV_ROW_CAP = 10_000;
+// Excel's own worksheet row limit is far higher, but this stays consistent
+// with the CSV export's cap and keeps generation time bounded.
+const XLSX_ROW_CAP = 10_000;
 
 export const maxDuration = 30;
 
@@ -16,7 +18,7 @@ export async function GET(request: NextRequest, { params }: { params: { table: s
   }
 
   const allowed = await checkRateLimit(getClientIp(request), {
-    route: "explorer-csv",
+    route: "explorer-xlsx",
     windowSeconds: 60,
     maxRequests: 10,
   });
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: { table: s
   try {
     const { rows } = await queryTable(table, {
       page: 1,
-      pageSize: CSV_ROW_CAP,
+      pageSize: XLSX_ROW_CAP,
       sortColumn,
       sortDir,
       filters,
@@ -38,11 +40,11 @@ export async function GET(request: NextRequest, { params }: { params: { table: s
       dateRange,
     });
 
-    const csv = toCsv(rows);
-    return new NextResponse(csv, {
+    const buffer = toXlsxBuffer(rows, table);
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${table}.csv"`,
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${table}.xlsx"`,
       },
     });
   } catch (err) {

@@ -4,7 +4,7 @@ import { getColumnTypesForTable } from "@/lib/db/schemaCache";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 import { getClientIp } from "@/lib/security/clientIp";
 
-const RESERVED_PARAMS = new Set(["page", "pageSize", "sort", "dir"]);
+const RESERVED_PARAMS = new Set(["page", "pageSize", "sort", "dir", "dateColumn", "dateFrom", "dateTo"]);
 
 export async function GET(request: NextRequest, { params }: { params: { table: string } }) {
   const { table } = params;
@@ -26,6 +26,9 @@ export async function GET(request: NextRequest, { params }: { params: { table: s
   const pageSize = Math.min(200, Math.max(1, Number(searchParams.get("pageSize") ?? "50")));
   const sortColumn = searchParams.get("sort") ?? undefined;
   const sortDir = (searchParams.get("dir") as "asc" | "desc" | null) ?? undefined;
+  const dateColumn = searchParams.get("dateColumn");
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
 
   const filters: Record<string, string> = {};
   for (const [key, value] of searchParams.entries()) {
@@ -42,8 +45,16 @@ export async function GET(request: NextRequest, { params }: { params: { table: s
       sortDir,
       filters,
       columnTypes,
+      dateRange: dateColumn ? { column: dateColumn, from: dateFrom ?? undefined, to: dateTo ?? undefined } : undefined,
     });
-    return NextResponse.json({ rows, count, page, pageSize, columns: Object.keys(columnTypes) });
+    return NextResponse.json({
+      rows,
+      count,
+      page,
+      pageSize,
+      columns: Object.keys(columnTypes),
+      columnTypes,
+    });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
   }
