@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# production
+build/
+
+# env files (never commit secrets)
+.env
+.env.local
+.env*.local
+
+# introspection output (may contain real sample data)
+scripts/.schema-introspection.json
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+
+# typescript
+next-env.d.ts
+*.tsbuildinfo

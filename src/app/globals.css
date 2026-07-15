@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --surface: #ffffff;
+  --surface-raised: #f7f8fa;
+  --border: #e5e7eb;
+  --ink: #111827;
+  --ink-muted: #6b7280;
+  --accent: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #0b0d12;
+    --surface-raised: #14171f;
+    --border: #262b36;
+    --ink: #f3f4f6;
+    --ink-muted: #9ca3af;
+    --accent: #60a5fa;
+  }
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* --- dataviz tokens (see dataviz skill / references/palette.md) --- */
+.viz-root {
+  color-scheme: light;
+  --viz-surface: #fcfcfb;
+  --viz-text-primary: #0b0b0b;
+  --viz-text-secondary: #52514e;
+  --viz-text-muted: #898781;
+  --viz-grid: #e1e0d9;
+  --viz-baseline: #c3c2b7;
+  --viz-border: rgba(11, 11, 11, 0.1);
+  --viz-seq-100: #cde2fb;
+  --viz-seq-250: #86b6ef;
+  --viz-seq-400: #3987e5;
+  --viz-seq-450: #2a78d6;
+  --viz-good: #0ca30c;
+  --viz-critical: #d03b3b;
+  --viz-warning: #fab219;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --viz-surface: #1a1a19;
+    --viz-text-primary: #ffffff;
+    --viz-text-secondary: #c3c2b7;
+    --viz-text-muted: #898781;
+    --viz-grid: #2c2c2a;
+    --viz-baseline: #383835;
+    --viz-border: rgba(255, 255, 255, 0.1);
+    --viz-seq-100: #184f95;
+    --viz-seq-250: #1c5cab;
+    --viz-seq-400: #3987e5;
+    --viz-seq-450: #2a78d6;
+    --viz-good: #0ca30c;
+    --viz-critical: #e66767;
+    --viz-warning: #fab219;
+  }
+}
+
