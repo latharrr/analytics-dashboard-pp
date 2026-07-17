@@ -40,7 +40,19 @@ export interface IntentResult {
   keyboard?: InlineKeyboardButton[][];
 }
 
-/** Handles both fixed-menu navigation (callback_data) and resolved free-text intent keys. */
+const MAX_SERIES_DAYS = 90;
+
+/** Shared by both the fixed 1/7/30 range buttons and free-text queries with an arbitrary day count. */
+export async function runSeriesIntent(prefix: "nu" | "au", daysRaw: number): Promise<IntentResult> {
+  const days = Math.min(Math.max(Math.round(daysRaw), 1), MAX_SERIES_DAYS);
+  const rows = prefix === "nu" ? await getNewUsersPerDay(days) : await getActiveUsersPerDay(days);
+  const noun = prefix === "nu" ? "New users" : "Active users";
+  const emoji = prefix === "nu" ? "🆕" : "👥";
+  const title = `${emoji} ${noun} — last ${days} day${days > 1 ? "s" : ""}`;
+  return { text: formatSeries(title, rows), keyboard: MAIN_MENU };
+}
+
+/** Handles fixed-menu navigation and taps (callback_data values only — 1/7/30 day ranges). */
 export async function runIntent(key: string): Promise<IntentResult | null> {
   if (key === "menu") {
     return { text: "📊 What would you like to see?", keyboard: MAIN_MENU };
@@ -58,43 +70,58 @@ export async function runIntent(key: string): Promise<IntentResult | null> {
   const [prefix, daysStr] = key.split(":");
   const days = Number(daysStr);
   if ((prefix === "nu" || prefix === "au") && [1, 7, 30].includes(days)) {
-    const rows = prefix === "nu" ? await getNewUsersPerDay(days) : await getActiveUsersPerDay(days);
-    const noun = prefix === "nu" ? "New users" : "Active users";
-    const emoji = prefix === "nu" ? "🆕" : "👥";
-    const title = `${emoji} ${noun} — last ${days} day${days > 1 ? "s" : ""}`;
-    return { text: formatSeries(title, rows), keyboard: MAIN_MENU };
+    return runSeriesIntent(prefix, days);
   }
 
   return null;
 }
 
-/** Maps a free-text intent key (from classifyIntent) to what the user meant, for the classifier prompt. */
-const INTENT_LABELS: Record<string, string> = {
-  dau: "daily active users right now",
-  wau: "weekly active users right now",
-  mau: "monthly active users right now",
-  "nu:1": "new user signups today / in the last 1 day",
-  "nu:7": "new user signups in the last 7 days",
-  "nu:30": "new user signups in the last 30 days",
-  "au:1": "active users today / in the last 1 day",
-  "au:7": "active users in the last 7 days",
-  "au:30": "active users in the last 30 days",
+/**
+ * Pulls an explicit day count out of free text ("last 3 days", "past 14
+ * days", "this week"), or null if none is stated. Deliberately NOT an LLM
+ * guess — a wrong number here would silently answer the wrong question, so
+ * this is plain deterministic parsing. Callers default to 7 days when this
+ * returns null.
+ */
+export function extractDayCount(text: string): number | null {
+  const lower = text.toLowerCase();
+  if (/\btoday\b|\byesterday\b/.test(lower)) return 1;
+  if (/\bthis week\b|\blast week\b/.test(lower)) return 7;
+  if (/\bthis month\b|\blast month\b/.test(lower)) return 30;
+  const match = lower.match(/(\d+)\s*day/);
+  if (match) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > 0) return Math.min(n, MAX_SERIES_DAYS);
+  }
+  return null;
+}
+
+type Metric = "dau" | "wau" | "mau" | "new_users" | "active_users";
+
+/** Maps a metric key to what the user meant, for the classifier prompt. */
+const METRIC_LABELS: Record<Metric, string> = {
+  dau: "daily active users right now — a single current snapshot number",
+  wau: "weekly active users right now — a single current snapshot number",
+  mau: "monthly active users right now — a single current snapshot number",
+  new_users: "new user signups over a period of days — a day-by-day trend, e.g. 'new users this week' or 'signups last 3 days'",
+  active_users: "active users over a period of days — a day-by-day trend, e.g. 'active users last 2 weeks'",
 };
 
 /**
- * Classifies free text into one of the fixed intents above, or null if
- * unclear. Deliberately NOT text-to-SQL: this dashboard's README documents
- * that a free-text-to-SQL AI Query panel was built and removed for giving
- * wrong answers, so the model here only ever picks from this small closed
- * set of pre-vetted, already-correct queries — it never generates a query
- * of its own.
+ * Classifies free text into one of the metric categories above, or null if
+ * unclear. Deliberately NOT text-to-SQL, and deliberately doesn't ask the
+ * model to pick a day count either (see extractDayCount): this dashboard's
+ * README documents that a free-text-to-SQL AI Query panel was built and
+ * removed for giving wrong answers, so the model here only ever picks a
+ * *category* from a small closed set of already-correct queries — the
+ * actual query and its parameters are resolved deterministically.
  */
-export async function classifyIntent(question: string): Promise<string | null> {
+export async function classifyMetric(question: string): Promise<Metric | null> {
   const apiKey = process.env.GROQ_API_KEY;
   const model = process.env.GROQ_MODEL;
   if (!apiKey || !model) return null;
 
-  const options = Object.entries(INTENT_LABELS)
+  const options = Object.entries(METRIC_LABELS)
     .map(([key, desc]) => `${key} = ${desc}`)
     .join("\n");
 
@@ -116,16 +143,16 @@ export async function classifyIntent(question: string): Promise<string | null> {
       }),
     });
     if (!res.ok) {
-      console.error(`classifyIntent failed: ${res.status} ${await res.text()}`);
+      console.error(`classifyMetric failed: ${res.status} ${await res.text()}`);
       return null;
     }
     const data = await res.json();
     const raw = String(data?.choices?.[0]?.message?.content ?? "")
       .trim()
       .toLowerCase();
-    return raw in INTENT_LABELS ? raw : null;
+    return raw in METRIC_LABELS ? (raw as Metric) : null;
   } catch (err) {
-    console.error("classifyIntent failed:", err);
+    console.error("classifyMetric failed:", err);
     return null;
   }
 }

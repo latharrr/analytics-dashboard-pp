@@ -161,13 +161,18 @@ Once subscribed, they can also pull numbers on demand:
   with Last 1 / 7 / 30 day range buttons. Answers reuse the exact same
   queries as the dashboard's Growth/Activation pages
   (`src/lib/db/activityBreakdown.ts`) — nothing bot-specific is computed.
-- **Free-text questions** (e.g. "how many new users this week?"): Groq
-  classifies the question into one of that same fixed set of queries (see
-  `src/lib/telegram/intents.ts`) and runs it. If nothing matches, or
-  `GROQ_API_KEY`/`GROQ_MODEL` aren't set, it falls back to the button menu
-  instead of guessing. It never generates or runs its own SQL — that's the
-  exact failure mode that got the old AI Query panel removed (see the note
-  at the top of this file).
+- **Free-text questions** (e.g. "how many new users this week?", "signups
+  last 3 days"): Groq only picks a *category* — DAU/WAU/MAU or new/active
+  users — from a small closed set (`classifyMetric` in
+  `src/lib/telegram/intents.ts`); it never picks a day count. Any day count
+  in the question ("3 days", "this week", "last month") is pulled out
+  separately with plain regex (`extractDayCount`, defaults to 7 if none is
+  stated), then run through the exact same parameterized query the range
+  buttons use. If the category doesn't match, or `GROQ_API_KEY`/
+  `GROQ_MODEL` aren't set, it falls back to the button menu instead of
+  guessing. It never generates or runs its own SQL — that's the exact
+  failure mode that got the old AI Query panel removed (see the note at
+  the top of this file).
 
 1. **Create the bot.** Message [@BotFather](https://t.me/BotFather) on
    Telegram, run `/newbot`, and copy the token it gives you into

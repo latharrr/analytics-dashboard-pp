@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendTelegramMessage, answerTelegramCallback } from "@/lib/telegram/client";
 import { addTelegramSubscriber, isTelegramSubscriber } from "@/lib/db/telegramSubscribers";
-import { runIntent, classifyIntent, MAIN_MENU } from "@/lib/telegram/intents";
+import { runIntent, runSeriesIntent, classifyMetric, extractDayCount, MAIN_MENU } from "@/lib/telegram/intents";
 
 export const maxDuration = 15;
 
@@ -76,8 +76,13 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
       await sendTelegramMessage(chatId, "📊 What would you like to see?", MAIN_MENU);
       return;
     }
-    const intentKey = await classifyIntent(text);
-    const result = intentKey ? await runIntent(intentKey) : null;
+    const metric = await classifyMetric(text);
+    const result =
+      metric === "dau" || metric === "wau" || metric === "mau"
+        ? await runIntent(metric)
+        : metric === "new_users" || metric === "active_users"
+          ? await runSeriesIntent(metric === "new_users" ? "nu" : "au", extractDayCount(text) ?? 7)
+          : null;
     if (result) {
       await sendTelegramMessage(chatId, result.text, result.keyboard);
     } else {
