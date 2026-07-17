@@ -154,29 +154,34 @@ Anyone who messages the dashboard's Telegram bot is asked for a shared
 password once; after that, `/api/telegram/notify-refresh` (a daily Vercel
 Cron, `vercel.json`) messages them whenever the nightly KPI refresh runs.
 
-Once subscribed, they can also pull numbers on demand:
+Once subscribed, they can also pull numbers on demand — every metric on
+every dashboard tab is covered, and every reply says what date/time it's
+as of:
 
 - **Button menu** (`/menu`, or automatically shown after verifying): DAU /
   WAU / MAU snapshot; "New users/day" and "Active users/day" with Last 1 /
-  7 / 30 day range buttons; and single-shot breakdowns for activity by
-  hour, active users by college, feature adoption, activation funnel, and
-  retention cohorts (same fixed 30-day/8-week windows as their dashboard
-  pages — no range picker for those, matching the dashboard itself).
-  Answers reuse the exact same queries as the dashboard's
-  Growth/Activation/Retention pages (`src/lib/db/activityBreakdown.ts`) —
-  nothing bot-specific is computed.
+  7 / 30 day range buttons; a "More activity metrics" submenu (activity by
+  hour, active users by college, feature adoption, activation funnel,
+  retention cohorts — same fixed 30-day/8-week windows as their dashboard
+  pages, no range picker); and a "KPI dashboards" submenu with all 7 KPI
+  tabs (Growth, Pools, Chat, Trust, Monetization, Matching, AI/Copilot),
+  each rendering every field of that tab's materialized-view snapshot the
+  same generic way `StatTileGrid` does on the dashboard itself. Live
+  metrics are tagged "as of \<now\>"; KPI-tab metrics are tagged "as of
+  \<nightly refresh time\>" from `analytics_refresh_log`, since those are
+  nightly-refreshed, not live. Nothing bot-specific is computed — see
+  `src/lib/telegram/intents.ts`.
 - **Free-text questions** (e.g. "how many new users this week?", "signups
-  last 3 days"): Groq only picks a *category* — DAU/WAU/MAU or new/active
-  users — from a small closed set (`classifyMetric` in
-  `src/lib/telegram/intents.ts`); it never picks a day count. Any day count
-  in the question ("3 days", "this week", "last month") is pulled out
-  separately with plain regex (`extractDayCount`, defaults to 7 if none is
-  stated), then run through the exact same parameterized query the range
-  buttons use. If the category doesn't match, or `GROQ_API_KEY`/
-  `GROQ_MODEL` aren't set, it falls back to the button menu instead of
-  guessing. It never generates or runs its own SQL — that's the exact
-  failure mode that got the old AI Query panel removed (see the note at
-  the top of this file).
+  last 3 days", "how's revenue looking"): Groq only picks a *category* out
+  of that same fixed set (`classifyMetric`); it never picks a day count or
+  writes a query. Any day count in the question ("3 days", "this week",
+  "last month") is pulled out separately with plain regex
+  (`extractDayCount`, defaults to 7 if none is stated), then run through
+  the exact same parameterized query the range buttons use. If the
+  category doesn't match, or `GROQ_API_KEY`/`GROQ_MODEL` aren't set, it
+  falls back to the button menu instead of guessing. It never generates or
+  runs its own SQL — that's the exact failure mode that got the old AI
+  Query panel removed (see the note at the top of this file).
 
 1. **Create the bot.** Message [@BotFather](https://t.me/BotFather) on
    Telegram, run `/newbot`, and copy the token it gives you into

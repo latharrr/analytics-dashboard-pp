@@ -9,8 +9,10 @@ import {
   getRetentionCohorts,
   type RetentionCohort,
 } from "@/lib/db/activityBreakdown";
+import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import type { BarDatum } from "@/components/kpi/BarChartCard";
 import type { InlineKeyboardButton } from "@/lib/telegram/client";
+import { formatValue, humanizeKey, formatAsOf } from "@/lib/format";
 
 export const MAIN_MENU: InlineKeyboardButton[][] = [
   [
@@ -22,6 +24,11 @@ export const MAIN_MENU: InlineKeyboardButton[][] = [
     { text: "New users/day", callback_data: "nu" },
     { text: "Active users/day", callback_data: "au" },
   ],
+  [{ text: "📈 More activity metrics", callback_data: "more_activity" }],
+  [{ text: "📊 KPI dashboards", callback_data: "more_kpi" }],
+];
+
+const ACTIVITY_SUBMENU: InlineKeyboardButton[][] = [
   [
     { text: "Activity by hour", callback_data: "hourly" },
     { text: "By college", callback_data: "college" },
@@ -31,6 +38,24 @@ export const MAIN_MENU: InlineKeyboardButton[][] = [
     { text: "Activation funnel", callback_data: "funnel" },
   ],
   [{ text: "Retention cohorts", callback_data: "retention" }],
+  [{ text: "⬅️ Back", callback_data: "menu" }],
+];
+
+const KPI_SUBMENU: InlineKeyboardButton[][] = [
+  [
+    { text: "Growth", callback_data: "growth" },
+    { text: "Pools", callback_data: "pools" },
+  ],
+  [
+    { text: "Chat", callback_data: "chat" },
+    { text: "Trust", callback_data: "trust" },
+  ],
+  [
+    { text: "Monetization", callback_data: "monetization" },
+    { text: "Matching", callback_data: "matching" },
+  ],
+  [{ text: "AI/Copilot", callback_data: "aicopilot" }],
+  [{ text: "⬅️ Back", callback_data: "menu" }],
 ];
 
 function rangeMenu(prefix: "nu" | "au"): InlineKeyboardButton[][] {
@@ -44,24 +69,28 @@ function rangeMenu(prefix: "nu" | "au"): InlineKeyboardButton[][] {
   ];
 }
 
+function nowAsOf(): string {
+  return `As of ${formatAsOf(new Date().toISOString())}`;
+}
+
 async function formatSnapshot(): Promise<string> {
   const { dau, wau, mau } = await getDauWauMau();
-  return `📊 DAU: ${dau.toLocaleString()}\nWAU: ${wau.toLocaleString()}\nMAU: ${mau.toLocaleString()}`;
+  return `📊 DAU: ${dau.toLocaleString()}\nWAU: ${wau.toLocaleString()}\nMAU: ${mau.toLocaleString()}\n\n${nowAsOf()} (live)`;
 }
 
 /** For genuine day-by-day trends, where summing across the period is meaningful. */
 function formatSeries(title: string, rows: BarDatum[]): string {
-  if (rows.length === 0) return `${title}\nNo data.`;
+  if (rows.length === 0) return `${title}\nNo data.\n\n${nowAsOf()} (live)`;
   const lines = rows.map((r) => `${r.label}: ${r.value.toLocaleString()}`);
   const total = rows.reduce((sum, r) => sum + r.value, 0);
-  return [title, ...lines, `Total: ${total.toLocaleString()}`].join("\n");
+  return [title, ...lines, `Total: ${total.toLocaleString()}`, "", nowAsOf() + " (live)"].join("\n");
 }
 
 /** For breakdowns where the categories overlap (a user can use multiple features, live near multiple colleges, etc.), so a "Total" line would be misleading. */
 function formatBreakdown(title: string, rows: BarDatum[]): string {
-  if (rows.length === 0) return `${title}\nNo data.`;
+  if (rows.length === 0) return `${title}\nNo data.\n\n${nowAsOf()} (live)`;
   const lines = rows.map((r) => `${r.label}: ${r.value.toLocaleString()}`);
-  return [title, ...lines].join("\n");
+  return [title, ...lines, "", nowAsOf() + " (live)"].join("\n");
 }
 
 /** Matches the % rounding in src/app/(dashboard)/retention/page.tsx's pct(). */
@@ -72,12 +101,25 @@ function pct(retained: number, cohortSize: number): string {
 
 function formatRetention(rows: RetentionCohort[]): string {
   const title = "📈 Retention cohorts (last 8 weeks)";
-  if (rows.length === 0) return `${title}\nNo data.`;
+  if (rows.length === 0) return `${title}\nNo data.\n\n${nowAsOf()} (live)`;
   const lines = rows.map(
     (r) =>
       `${r.cohortWeek} (n=${r.cohortSize}): W1 ${pct(r.week1, r.cohortSize)} · W2 ${pct(r.week2, r.cohortSize)} · W3 ${pct(r.week3, r.cohortSize)} · W4 ${pct(r.week4, r.cohortSize)}`
   );
-  return [title, ...lines].join("\n");
+  return [title, ...lines, "", nowAsOf() + " (live)"].join("\n");
+}
+
+/** Same generic rendering StatTileGrid uses for a KPI materialized-view snapshot row. */
+async function formatKpiArea(title: string, viewName: string): Promise<string> {
+  const [row, refreshInfo] = await Promise.all([getKpiSnapshot(viewName), getRefreshInfo()]);
+  if (!row) return `${title}\nNo data yet — has the materialized view been refreshed?`;
+  const lines = Object.entries(row)
+    .filter(([, v]) => typeof v !== "object" || v === null)
+    .map(([key, value]) => `${humanizeKey(key)}: ${formatValue(value)}`);
+  const asOf = refreshInfo?.refreshed_at
+    ? `As of ${formatAsOf(refreshInfo.refreshed_at)} (nightly refresh)`
+    : "As of: never refreshed yet";
+  return [title, ...lines, "", asOf].join("\n");
 }
 
 export interface IntentResult {
@@ -121,10 +163,27 @@ const FIXED_WINDOW_INTENTS: Record<string, () => Promise<IntentResult>> = {
   }),
 };
 
+/** The 7 nightly-refreshed KPI materialized views — one per dashboard tab. */
+const KPI_AREAS: Record<string, { view: string; title: string }> = {
+  growth: { view: "mv_growth_kpis", title: "🌱 Growth" },
+  pools: { view: "mv_pool_kpis", title: "🏊 Pools" },
+  chat: { view: "mv_chat_kpis", title: "💬 Chat" },
+  trust: { view: "mv_trust_kpis", title: "🛡️ Trust & Verification" },
+  monetization: { view: "mv_monetization_kpis", title: "💰 Monetization" },
+  matching: { view: "mv_matching_kpis", title: "🤝 Matching" },
+  aicopilot: { view: "mv_ai_copilot_kpis", title: "🤖 AI / Copilot & Automation" },
+};
+
 /** Handles fixed-menu navigation and taps (callback_data values only — 1/7/30 day ranges). */
 export async function runIntent(key: string): Promise<IntentResult | null> {
   if (key === "menu") {
     return { text: "📊 What would you like to see?", keyboard: MAIN_MENU };
+  }
+  if (key === "more_activity") {
+    return { text: "📈 Activity metrics:", keyboard: ACTIVITY_SUBMENU };
+  }
+  if (key === "more_kpi") {
+    return { text: "📊 Which dashboard?", keyboard: KPI_SUBMENU };
   }
   if (key === "dau" || key === "wau" || key === "mau") {
     return { text: await formatSnapshot(), keyboard: MAIN_MENU };
@@ -137,6 +196,10 @@ export async function runIntent(key: string): Promise<IntentResult | null> {
   }
   if (key in FIXED_WINDOW_INTENTS) {
     return FIXED_WINDOW_INTENTS[key]();
+  }
+  if (key in KPI_AREAS) {
+    const area = KPI_AREAS[key];
+    return { text: await formatKpiArea(area.title, area.view), keyboard: MAIN_MENU };
   }
 
   const [prefix, daysStr] = key.split(":");
@@ -178,7 +241,14 @@ type Metric =
   | "proximity"
   | "feature_adoption"
   | "activation_funnel"
-  | "retention";
+  | "retention"
+  | "growth"
+  | "pools"
+  | "chat"
+  | "trust"
+  | "monetization"
+  | "matching"
+  | "aicopilot";
 
 /** Maps a metric key to what the user meant, for the classifier prompt. Fixed-window metrics don't take a day count — same as their dashboard pages. */
 const METRIC_LABELS: Record<Metric, string> = {
@@ -192,6 +262,13 @@ const METRIC_LABELS: Record<Metric, string> = {
   feature_adoption: "which features are used, feature adoption/usage breakdown, last 30 days",
   activation_funnel: "the activation/onboarding funnel, signup-to-active-user stages, last 30 days",
   retention: "retention cohorts, how many users come back week over week",
+  growth: "Growth dashboard: signups, verification rates, referrals, where new users come from",
+  pools: "Pools dashboard: pool creation, participation, completion rates, pool sizes",
+  chat: "Chat dashboard: messaging activity, rooms, chat members, chat requests",
+  trust: "Trust & Verification dashboard: trust score, KYC, Digilocker, trust ledger actions, bans",
+  monetization: "Monetization dashboard: revenue, payments, subscriptions, transactions",
+  matching: "Matching dashboard: match rates, roommate/flatmate matching activity",
+  aicopilot: "AI / Copilot dashboard: AI assistant usage, automation activity",
 };
 
 const FIXED_WINDOW_METRICS = new Set<Metric>([
@@ -202,13 +279,22 @@ const FIXED_WINDOW_METRICS = new Set<Metric>([
   "retention",
 ]);
 
-/** Maps a fixed-window Metric to its FIXED_WINDOW_INTENTS key. */
+const KPI_METRICS = new Set<Metric>(["growth", "pools", "chat", "trust", "monetization", "matching", "aicopilot"]);
+
+/** Maps a fixed-window Metric to its FIXED_WINDOW_INTENTS/KPI_AREAS key (identical strings today, kept separate for clarity). */
 const METRIC_TO_INTENT_KEY: Partial<Record<Metric, string>> = {
   activity_by_hour: "hourly",
   proximity: "college",
   feature_adoption: "features",
   activation_funnel: "funnel",
   retention: "retention",
+  growth: "growth",
+  pools: "pools",
+  chat: "chat",
+  trust: "trust",
+  monetization: "monetization",
+  matching: "matching",
+  aicopilot: "aicopilot",
 };
 
 /**
@@ -269,7 +355,7 @@ export async function runMetric(metric: Metric, questionText: string): Promise<I
   if (metric === "new_users" || metric === "active_users") {
     return runSeriesIntent(metric === "new_users" ? "nu" : "au", extractDayCount(questionText) ?? 7);
   }
-  if (FIXED_WINDOW_METRICS.has(metric)) {
+  if (FIXED_WINDOW_METRICS.has(metric) || KPI_METRICS.has(metric)) {
     const key = METRIC_TO_INTENT_KEY[metric];
     return key ? runIntent(key) : null;
   }
