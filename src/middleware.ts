@@ -3,7 +3,22 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
 const PUBLIC_PATHS = ["/login", "/auth/callback"];
 
+// Routes with their own request-level auth (a bearer token or a Telegram
+// secret header, checked inside the route handler itself) instead of a
+// Supabase Auth session. These are hit by Vercel Cron / Telegram, which
+// never carry the dashboard's session cookie, so they must skip the
+// session check entirely rather than get redirected to /login.
+const SESSION_AUTH_BYPASS_PATHS = [
+  "/api/schema-cache/refresh",
+  "/api/telegram/webhook",
+  "/api/telegram/notify-refresh",
+];
+
 export async function middleware(request: NextRequest) {
+  if (SESSION_AUTH_BYPASS_PATHS.some((p) => request.nextUrl.pathname.startsWith(p))) {
+    return NextResponse.next();
+  }
+
   const response = NextResponse.next({ request: { headers: request.headers } });
 
   const supabase = createServerClient(

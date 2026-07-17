@@ -59,6 +59,7 @@ In order, from `supabase/migrations/`:
 | `013_analytics_ai_query_log.sql` | Historical: backed the now-removed AI Query panel. Harmless to leave in place; drop `analytics_ai_query_log` yourself if you want it gone. |
 | `014_restore_service_role_grants.sql` | Only needed if `service_role` is missing `USAGE` on the `public` schema in your project (it should have this by default on any fresh Supabase project; run this if you hit `permission denied for schema public` errors). |
 | `015_activity_breakdown_functions.sql` | SQL functions backing the Overview page's activity widgets and the Growth/Activation/Engagement/Retention dashboards (DAU/WAU/MAU, new/active users per day, activity by hour, active users by proximity, feature adoption, activation funnel, retention cohorts). Called live via `.rpc()`, not nightly-refreshed. |
+| `016_telegram_subscribers.sql` | Creates `analytics_telegram_subscribers`, which powers the daily Telegram "new data fetched" notifications (see "Telegram daily updates" below). |
 
 This codebase intentionally never runs these migrations for you. Creating
 login roles and cron schedules are changes to your production database's
@@ -143,6 +144,40 @@ browser, for every read in this app.
 - **PII redaction in the schema cache.** Sample values for any column matching `email|phone|password|token|secret|otp|aadhar|...` are redacted before being shown in the Schema Browser (`src/lib/db/refreshSchemaCache.ts`).
 - **Cron endpoint gated.** `/api/schema-cache/refresh` requires a bearer token matching `CRON_SECRET`.
 - **No secrets committed.** `.gitignore` excludes `.env*` and the raw schema-introspection JSON (which holds real, unredacted sample rows).
+
+## Telegram daily updates
+
+Anyone who messages the dashboard's Telegram bot is asked for a shared
+password once; after that, `/api/telegram/notify-refresh` (a daily Vercel
+Cron, `vercel.json`) messages them whenever the nightly KPI refresh runs.
+
+1. **Create the bot.** Message [@BotFather](https://t.me/BotFather) on
+   Telegram, run `/newbot`, and copy the token it gives you into
+   `TELEGRAM_BOT_TOKEN`.
+2. **Set the other two env vars.** `TELEGRAM_BOT_PASSWORD` (whatever you want
+   people to send the bot to subscribe) and `TELEGRAM_WEBHOOK_SECRET` (any
+   random string) — see `.env.local.example`. Set all three in your Vercel
+   project too, alongside `CRON_SECRET`.
+3. **Run migration `016`** (see step 3 above) to create
+   `analytics_telegram_subscribers`.
+4. **Deploy**, then register the webhook so Telegram forwards messages to
+   your deployed app (replace both placeholders):
+   ```bash
+   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+     -d "url=https://<your-vercel-domain>/api/telegram/webhook" \
+     -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+   ```
+5. **Message the bot** on Telegram and send the password you set in step 2.
+   It'll confirm you're subscribed. From then on you'll get a message once a
+   day, a few minutes after the nightly refresh (`21:45` UTC / `3:15 AM`
+   IST — adjust the schedule in `vercel.json` if the refresh itself is
+   taking longer than 15 minutes).
+
+`/api/telegram/webhook` and `/api/telegram/notify-refresh` (like
+`/api/schema-cache/refresh`) authenticate via their own header/bearer-token
+check instead of the dashboard's Supabase Auth session, since Telegram and
+Vercel Cron never carry that session cookie — `middleware.ts` explicitly
+skips the session check for these three paths.
 
 ## Deploying
 

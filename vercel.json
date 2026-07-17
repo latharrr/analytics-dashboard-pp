@@ -3,6 +3,10 @@
     {
       "path": "/api/schema-cache/refresh",
       "schedule": "0 21 * * 0"
+    },
+    {
+      "path": "/api/telegram/notify-refresh",
+      "schedule": "45 21 * * *"
     }
   ]
 }
