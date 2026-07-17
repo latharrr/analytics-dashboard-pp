@@ -142,7 +142,7 @@ browser, for every read in this app.
 - **Auth on every route.** `middleware.ts` gates all pages and API routes behind a valid Supabase Auth session, redirecting unauthenticated requests to `/login`.
 - **Secrets stay server-side.** The service-role key is only ever imported by server-only modules (`src/lib/supabase/server.ts`, `src/lib/db/*`), never by a `"use client"` component. The browser only ever holds the anon key.
 - **TLS certificate verification.** All raw `pg` connections verify the server certificate against Node's trusted CA store (`src/lib/db/pgSsl.ts`) rather than skipping verification.
-- **Rate limiting.** `/api/explorer/[table]` (120 req/min) and its CSV/XLSX exports (10 req/min each) are limited per client IP via a Postgres-backed fixed-window limiter (`supabase/migrations/012`, `src/lib/security/rateLimit.ts`). No Redis needed.
+- **Rate limiting.** `/api/explorer/[table]` (120 req/min) and its CSV/XLSX exports (10 req/min each) are limited per client IP via a Postgres-backed fixed-window limiter (`supabase/migrations/012`, `src/lib/security/rateLimit.ts`). No Redis needed. The same limiter also gates the Telegram webhook per chat_id: 5 password attempts per 5 minutes while unauthenticated, 30 button taps/min and 20 messages/min once subscribed.
 - **Data Explorer table allowlist.** The `table` route param is checked against a fixed list of the 73 non-internal tables before any query runs (`src/lib/db/explorer.ts`). The 6 PostGIS/migration tables are unreachable through it, and column names in filters/sort are checked against the schema cache before being used.
 - **PII redaction in the schema cache.** Sample values for any column matching `email|phone|password|token|secret|otp|aadhar|...` are redacted before being shown in the Schema Browser (`src/lib/db/refreshSchemaCache.ts`).
 - **Cron endpoint gated.** `/api/schema-cache/refresh` requires a bearer token matching `CRON_SECRET`.
@@ -157,10 +157,14 @@ Cron, `vercel.json`) messages them whenever the nightly KPI refresh runs.
 Once subscribed, they can also pull numbers on demand:
 
 - **Button menu** (`/menu`, or automatically shown after verifying): DAU /
-  WAU / MAU snapshot, plus "New users/day" and "Active users/day", each
-  with Last 1 / 7 / 30 day range buttons. Answers reuse the exact same
-  queries as the dashboard's Growth/Activation pages
-  (`src/lib/db/activityBreakdown.ts`) — nothing bot-specific is computed.
+  WAU / MAU snapshot; "New users/day" and "Active users/day" with Last 1 /
+  7 / 30 day range buttons; and single-shot breakdowns for activity by
+  hour, active users by college, feature adoption, activation funnel, and
+  retention cohorts (same fixed 30-day/8-week windows as their dashboard
+  pages — no range picker for those, matching the dashboard itself).
+  Answers reuse the exact same queries as the dashboard's
+  Growth/Activation/Retention pages (`src/lib/db/activityBreakdown.ts`) —
+  nothing bot-specific is computed.
 - **Free-text questions** (e.g. "how many new users this week?", "signups
   last 3 days"): Groq only picks a *category* — DAU/WAU/MAU or new/active
   users — from a small closed set (`classifyMetric` in

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendTelegramMessage, answerTelegramCallback } from "@/lib/telegram/client";
 import { addTelegramSubscriber, isTelegramSubscriber } from "@/lib/db/telegramSubscribers";
-import { runIntent, runSeriesIntent, classifyMetric, extractDayCount, MAIN_MENU } from "@/lib/telegram/intents";
+import { runIntent, classifyMetric, runMetric, MAIN_MENU } from "@/lib/telegram/intents";
+import { checkRateLimit } from "@/lib/security/rateLimit";
 
 export const maxDuration = 15;
 
@@ -60,6 +61,13 @@ async function handleCallback(callback: TelegramCallbackQuery): Promise<void> {
   const chatId = callback.message?.chat?.id;
   if (!chatId) return;
 
+  const allowed = await checkRateLimit(String(chatId), {
+    route: "telegram-callback",
+    windowSeconds: 60,
+    maxRequests: 30,
+  });
+  if (!allowed) return;
+
   const result = await runIntent(callback.data ?? "");
   if (result) {
     await sendTelegramMessage(chatId, result.text, result.keyboard);
@@ -71,18 +79,30 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
   const text = typeof message.text === "string" ? message.text.trim() : "";
   if (!chatId) return;
 
-  if (await isTelegramSubscriber(chatId)) {
+  const isSubscriber = await isTelegramSubscriber(chatId);
+
+  // Tighter limit while unauthenticated, since this is the password brute-
+  // force surface; looser once verified, since queries are just reads.
+  const allowed = await checkRateLimit(String(chatId), isSubscriber
+    ? { route: "telegram-query", windowSeconds: 60, maxRequests: 20 }
+    : { route: "telegram-auth", windowSeconds: 300, maxRequests: 5 });
+  if (!allowed) {
+    if (isSubscriber) {
+      await sendTelegramMessage(chatId, "⏳ Too many messages — please wait a bit and try again.");
+    }
+    // Deliberately silent when NOT yet subscribed: telling a password
+    // brute-forcer "you're rate limited" just confirms the endpoint is
+    // live and worth continuing to attack.
+    return;
+  }
+
+  if (isSubscriber) {
     if (!text || text === "/start" || text === "/menu") {
       await sendTelegramMessage(chatId, "📊 What would you like to see?", MAIN_MENU);
       return;
     }
     const metric = await classifyMetric(text);
-    const result =
-      metric === "dau" || metric === "wau" || metric === "mau"
-        ? await runIntent(metric)
-        : metric === "new_users" || metric === "active_users"
-          ? await runSeriesIntent(metric === "new_users" ? "nu" : "au", extractDayCount(text) ?? 7)
-          : null;
+    const result = metric ? await runMetric(metric, text) : null;
     if (result) {
       await sendTelegramMessage(chatId, result.text, result.keyboard);
     } else {
