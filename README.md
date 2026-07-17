@@ -9,8 +9,11 @@ built and then removed after it proved unreliable in practice (wrong
 answers, provider errors). `analytics_ai_query_log` (migration `013`) and
 the `analytics_readonly` role (migration `001`) are still in the schema
 because the schema cache generator (used by the Schema Browser) also uses
-that role's connection, but the AI query code itself, `groq-sdk`, and the
-`GROQ_*` env vars are gone.
+that role's connection, but the AI query code itself and `groq-sdk` are
+gone. The `GROQ_*` env vars are back, but scoped very differently: the
+Telegram bot (see "Telegram daily updates" below) uses Groq only to
+classify a free-text question into one of a small fixed set of already-
+correct queries, never to generate SQL.
 
 ## Stack
 
@@ -150,6 +153,21 @@ browser, for every read in this app.
 Anyone who messages the dashboard's Telegram bot is asked for a shared
 password once; after that, `/api/telegram/notify-refresh` (a daily Vercel
 Cron, `vercel.json`) messages them whenever the nightly KPI refresh runs.
+
+Once subscribed, they can also pull numbers on demand:
+
+- **Button menu** (`/menu`, or automatically shown after verifying): DAU /
+  WAU / MAU snapshot, plus "New users/day" and "Active users/day", each
+  with Last 1 / 7 / 30 day range buttons. Answers reuse the exact same
+  queries as the dashboard's Growth/Activation pages
+  (`src/lib/db/activityBreakdown.ts`) — nothing bot-specific is computed.
+- **Free-text questions** (e.g. "how many new users this week?"): Groq
+  classifies the question into one of that same fixed set of queries (see
+  `src/lib/telegram/intents.ts`) and runs it. If nothing matches, or
+  `GROQ_API_KEY`/`GROQ_MODEL` aren't set, it falls back to the button menu
+  instead of guessing. It never generates or runs its own SQL — that's the
+  exact failure mode that got the old AI Query panel removed (see the note
+  at the top of this file).
 
 1. **Create the bot.** Message [@BotFather](https://t.me/BotFather) on
    Telegram, run `/newbot`, and copy the token it gives you into
