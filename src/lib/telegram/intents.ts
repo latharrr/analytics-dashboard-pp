@@ -15,6 +15,8 @@ import {
   getPoolCompletionByCategory,
   getAskAroundEngagedUsers,
   getAskAroundByNewUsers,
+  getAskAroundCreatorVerification,
+  type VerificationBreakdown,
 } from "@/lib/db/poolBreakdown";
 import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import type { BarDatum } from "@/components/kpi/BarChartCard";
@@ -147,18 +149,32 @@ function formatPercentBreakdown(title: string, rows: BarDatum[]): string {
   return [title, ...lines, "", nowAsOf() + " (live)"].join("\n");
 }
 
-/** For a single live headline number (e.g. "how many users have ever done X"). */
-function formatStat(title: string, value: number): string {
-  return `${title}\n${value.toLocaleString()}\n\n${nowAsOf()} (live)`;
+/** Digilocker/college-ID verification lines for a group of Ask Around creators, plus a bot-creator line kept separate from the human breakdown. */
+function verificationLines(label: string, v: VerificationBreakdown): string[] {
+  return [
+    `Of ${label}:`,
+    `  Digilocker only: ${v.digilockerOnly.toLocaleString()}`,
+    `  College ID only: ${v.collegeOnly.toLocaleString()}`,
+    `  Both: ${v.both.toLocaleString()}`,
+    `  Neither: ${v.neither.toLocaleString()}`,
+    `Bot accounts that also created one (excluded above): ${v.botCreators.toLocaleString()}`,
+  ];
 }
 
-/** For a cohort-conversion stat: how many of a "new users" cohort went on to do something. */
-function formatCohortConversion(title: string, cohortSize: number, converted: number): string {
+/** For a cohort-conversion stat: how many of a "new users" cohort went on to do something, plus a verification breakdown of the ones who did. */
+function formatCohortConversion(
+  title: string,
+  cohortSize: number,
+  converted: number,
+  verification: VerificationBreakdown
+): string {
   const pctLine = cohortSize > 0 ? `${Math.round((converted / cohortSize) * 1000) / 10}%` : "N/A";
   return [
     title,
     `New users: ${cohortSize.toLocaleString()}`,
     `Created an Ask Around: ${converted.toLocaleString()} (${pctLine})`,
+    "",
+    ...verificationLines(`the ${converted.toLocaleString()} creators`, verification),
     "",
     nowAsOf() + " (live)",
   ].join("\n");
@@ -216,9 +232,12 @@ export async function runSeriesIntent(prefix: "nu" | "au", daysRaw: number): Pro
 /** Shared by both the fixed 1/7/15/30 range buttons and free-text queries with an arbitrary day count. */
 export async function runAskAroundByNewUsersIntent(daysRaw: number): Promise<IntentResult> {
   const days = Math.min(Math.max(Math.round(daysRaw), 1), MAX_SERIES_DAYS);
-  const { newUsers, askAroundCreators } = await getAskAroundByNewUsers(days);
+  const result = await getAskAroundByNewUsers(days);
   const title = `🙋 Ask Around created by new users — last ${days} day${days > 1 ? "s" : ""}`;
-  return { text: formatCohortConversion(title, newUsers, askAroundCreators), keyboard: MAIN_MENU };
+  return {
+    text: formatCohortConversion(title, result.newUsers, result.askAroundCreators, result),
+    keyboard: MAIN_MENU,
+  };
 }
 
 /** Single-shot breakdowns with a fixed internal window (same as their dashboard pages — no range picker). */
@@ -251,10 +270,21 @@ const FIXED_WINDOW_INTENTS: Record<string, () => Promise<IntentResult>> = {
     text: formatPercentBreakdown("✅ Pool completion rate by category", await getPoolCompletionByCategory()),
     keyboard: MAIN_MENU,
   }),
-  ask_around: async () => ({
-    text: formatStat("🙋 Users who created or joined an Ask Around", await getAskAroundEngagedUsers()),
-    keyboard: MAIN_MENU,
-  }),
+  ask_around: async () => {
+    const [engaged, verification] = await Promise.all([
+      getAskAroundEngagedUsers(),
+      getAskAroundCreatorVerification(),
+    ]);
+    const text = [
+      "🙋 Users who created or joined an Ask Around",
+      engaged.toLocaleString(),
+      "",
+      ...verificationLines(`the ${verification.creators.toLocaleString()} all-time creators`, verification),
+      "",
+      nowAsOf() + " (live)",
+    ].join("\n");
+    return { text, keyboard: MAIN_MENU };
+  },
 };
 
 /** The 7 nightly-refreshed KPI materialized views — one per dashboard tab. */
