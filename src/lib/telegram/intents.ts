@@ -19,6 +19,7 @@ import {
   type VerificationBreakdown,
 } from "@/lib/db/poolBreakdown";
 import { getNewUserActivitySummary } from "@/lib/db/newUserActivity";
+import { getPgFlatLeadsSummary } from "@/lib/db/pgFlatLeads";
 import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import type { BarDatum } from "@/components/kpi/BarChartCard";
 import type { InlineKeyboardButton } from "@/lib/telegram/client";
@@ -56,6 +57,7 @@ const ACTIVITY_SUBMENU: InlineKeyboardButton[][] = [
     { text: "Ask Around by new users", callback_data: "ask_around_new_users" },
   ],
   [{ text: "New user activity", callback_data: "new_user_activity" }],
+  [{ text: "PG/Flat leads (30d)", callback_data: "pg_flat_leads" }],
   [{ text: "⬅️ Back", callback_data: "menu" }],
 ];
 
@@ -303,6 +305,14 @@ const FIXED_WINDOW_INTENTS: Record<string, () => Promise<IntentResult>> = {
     ].join("\n");
     return { text, keyboard: MAIN_MENU };
   },
+  pg_flat_leads: async () => {
+    const rows = await getPgFlatLeadsSummary(30);
+    const text = [
+      formatBreakdown("🏠 PG/Flat leads — last 30 days", rows),
+      "Names and phone numbers aren't sent here — see PG / Flat Leads on the dashboard to view and export contacts.",
+    ].join("\n");
+    return { text, keyboard: MAIN_MENU };
+  },
 };
 
 /** The 7 nightly-refreshed KPI materialized views — one per dashboard tab. */
@@ -401,6 +411,7 @@ type Metric =
   | "ask_around"
   | "ask_around_new_users"
   | "new_user_activity"
+  | "pg_flat_leads"
   | "growth"
   | "pools"
   | "chat"
@@ -426,6 +437,7 @@ const METRIC_LABELS: Record<Metric, string> = {
   ask_around: "how many users have created or joined an Ask Around pool/post, all-time",
   ask_around_new_users: "of users who signed up recently (new users), how many created an Ask Around pool/post — a day-count cohort conversion, e.g. 'ask around by new users last 15 days'",
   new_user_activity: "what activity new users (recent signups) have done — chat, joining/creating a pool, trust actions — broken down by type, over a period of days, e.g. 'what have new users done in the last 15 days'",
+  pg_flat_leads: "PG search / Flat listing / Flatmate listing leads count, last 30 days (aggregate counts only — no names or phone numbers here)",
   growth: "Growth dashboard: signups, verification rates, referrals, where new users come from",
   pools: "Pools dashboard: pool creation, participation, completion rates, pool sizes",
   chat: "Chat dashboard: messaging activity, rooms, chat members, chat requests",
@@ -444,6 +456,7 @@ const FIXED_WINDOW_METRICS = new Set<Metric>([
   "top_colleges",
   "pool_completion",
   "ask_around",
+  "pg_flat_leads",
 ]);
 
 const KPI_METRICS = new Set<Metric>(["growth", "pools", "chat", "trust", "monetization", "matching", "aicopilot"]);
@@ -458,6 +471,7 @@ const METRIC_TO_INTENT_KEY: Partial<Record<Metric, string>> = {
   top_colleges: "top_colleges",
   pool_completion: "pool_completion",
   ask_around: "ask_around",
+  pg_flat_leads: "pg_flat_leads",
   growth: "growth",
   pools: "pools",
   chat: "chat",
