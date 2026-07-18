@@ -11,7 +11,11 @@ import {
   type RetentionCohort,
 } from "@/lib/db/activityBreakdown";
 import { getTopCollegesByUsers } from "@/lib/db/growthBreakdown";
-import { getPoolCompletionByCategory, getAskAroundEngagedUsers } from "@/lib/db/poolBreakdown";
+import {
+  getPoolCompletionByCategory,
+  getAskAroundEngagedUsers,
+  getAskAroundByNewUsers,
+} from "@/lib/db/poolBreakdown";
 import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import type { BarDatum } from "@/components/kpi/BarChartCard";
 import type { InlineKeyboardButton } from "@/lib/telegram/client";
@@ -44,7 +48,10 @@ const ACTIVITY_SUBMENU: InlineKeyboardButton[][] = [
     { text: "Retention cohorts", callback_data: "retention" },
     { text: "Top colleges", callback_data: "top_colleges" },
   ],
-  [{ text: "Ask Around users", callback_data: "ask_around" }],
+  [
+    { text: "Ask Around users", callback_data: "ask_around" },
+    { text: "Ask Around by new users", callback_data: "ask_around_new_users" },
+  ],
   [{ text: "⬅️ Back", callback_data: "menu" }],
 ];
 
@@ -78,6 +85,18 @@ function rangeMenu(prefix: "nu" | "au"): InlineKeyboardButton[][] {
     [{ text: "⬅️ Back", callback_data: "menu" }],
   ];
 }
+
+const ASK_AROUND_NEW_USERS_RANGE_MENU: InlineKeyboardButton[][] = [
+  [
+    { text: "Last 1 day", callback_data: "aanu:1" },
+    { text: "Last 7 days", callback_data: "aanu:7" },
+  ],
+  [
+    { text: "Last 15 days", callback_data: "aanu:15" },
+    { text: "Last 30 days", callback_data: "aanu:30" },
+  ],
+  [{ text: "⬅️ Back", callback_data: "menu" }],
+];
 
 function nowAsOf(): string {
   return `As of ${formatAsOf(new Date().toISOString())}`;
@@ -133,6 +152,18 @@ function formatStat(title: string, value: number): string {
   return `${title}\n${value.toLocaleString()}\n\n${nowAsOf()} (live)`;
 }
 
+/** For a cohort-conversion stat: how many of a "new users" cohort went on to do something. */
+function formatCohortConversion(title: string, cohortSize: number, converted: number): string {
+  const pctLine = cohortSize > 0 ? `${Math.round((converted / cohortSize) * 1000) / 10}%` : "N/A";
+  return [
+    title,
+    `New users: ${cohortSize.toLocaleString()}`,
+    `Created an Ask Around: ${converted.toLocaleString()} (${pctLine})`,
+    "",
+    nowAsOf() + " (live)",
+  ].join("\n");
+}
+
 /** Matches the % rounding in src/app/(dashboard)/retention/page.tsx's pct(). */
 function pct(retained: number, cohortSize: number): string {
   if (!cohortSize) return "N/A";
@@ -180,6 +211,14 @@ export async function runSeriesIntent(prefix: "nu" | "au", daysRaw: number): Pro
   const [rows, uniqueTotal] = await Promise.all([getActiveUsersPerDay(days), getActiveUsersTotal(days)]);
   const title = `👥 Active users — last ${days} day${days > 1 ? "s" : ""}`;
   return { text: formatActiveSeries(title, rows, uniqueTotal), keyboard: MAIN_MENU };
+}
+
+/** Shared by both the fixed 1/7/15/30 range buttons and free-text queries with an arbitrary day count. */
+export async function runAskAroundByNewUsersIntent(daysRaw: number): Promise<IntentResult> {
+  const days = Math.min(Math.max(Math.round(daysRaw), 1), MAX_SERIES_DAYS);
+  const { newUsers, askAroundCreators } = await getAskAroundByNewUsers(days);
+  const title = `🙋 Ask Around created by new users — last ${days} day${days > 1 ? "s" : ""}`;
+  return { text: formatCohortConversion(title, newUsers, askAroundCreators), keyboard: MAIN_MENU };
 }
 
 /** Single-shot breakdowns with a fixed internal window (same as their dashboard pages — no range picker). */
@@ -249,6 +288,9 @@ export async function runIntent(key: string): Promise<IntentResult | null> {
   if (key === "au") {
     return { text: "Active users per day — choose a range:", keyboard: rangeMenu("au") };
   }
+  if (key === "ask_around_new_users") {
+    return { text: "Ask Around created by new users — choose a range:", keyboard: ASK_AROUND_NEW_USERS_RANGE_MENU };
+  }
   if (key in FIXED_WINDOW_INTENTS) {
     return FIXED_WINDOW_INTENTS[key]();
   }
@@ -261,6 +303,9 @@ export async function runIntent(key: string): Promise<IntentResult | null> {
   const days = Number(daysStr);
   if ((prefix === "nu" || prefix === "au") && [1, 7, 30].includes(days)) {
     return runSeriesIntent(prefix, days);
+  }
+  if (prefix === "aanu" && [1, 7, 15, 30].includes(days)) {
+    return runAskAroundByNewUsersIntent(days);
   }
 
   return null;
@@ -300,6 +345,7 @@ type Metric =
   | "top_colleges"
   | "pool_completion"
   | "ask_around"
+  | "ask_around_new_users"
   | "growth"
   | "pools"
   | "chat"
@@ -323,6 +369,7 @@ const METRIC_LABELS: Record<Metric, string> = {
   top_colleges: "top colleges/universities ranked by number of verified users",
   pool_completion: "pool completion rate broken down by pool category",
   ask_around: "how many users have created or joined an Ask Around pool/post, all-time",
+  ask_around_new_users: "of users who signed up recently (new users), how many created an Ask Around pool/post — a day-count cohort conversion, e.g. 'ask around by new users last 15 days'",
   growth: "Growth dashboard: signups, verification rates, referrals, where new users come from",
   pools: "Pools dashboard: pool creation, participation, completion rates, pool sizes",
   chat: "Chat dashboard: messaging activity, rooms, chat members, chat requests",
@@ -421,6 +468,9 @@ export async function runMetric(metric: Metric, questionText: string): Promise<I
   }
   if (metric === "new_users" || metric === "active_users") {
     return runSeriesIntent(metric === "new_users" ? "nu" : "au", extractDayCount(questionText) ?? 7);
+  }
+  if (metric === "ask_around_new_users") {
+    return runAskAroundByNewUsersIntent(extractDayCount(questionText) ?? 7);
   }
   if (FIXED_WINDOW_METRICS.has(metric) || KPI_METRICS.has(metric)) {
     const key = METRIC_TO_INTENT_KEY[metric];

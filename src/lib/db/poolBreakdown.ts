@@ -43,3 +43,21 @@ export async function getAskAroundEngagedUsers(): Promise<number> {
   if (error || data == null) return 0;
   return data as number;
 }
+
+export interface AskAroundByNewUsers {
+  newUsers: number;
+  askAroundCreators: number;
+}
+
+/**
+ * Of users who signed up in the last daysBack days ("new users"), how many
+ * have created at least one Ask Around pool. Backed by
+ * analytics_ask_around_by_new_users() (migration 022).
+ */
+export async function getAskAroundByNewUsers(daysBack: number): Promise<AskAroundByNewUsers> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("analytics_ask_around_by_new_users", { days_back: daysBack });
+  if (error || !data) return { newUsers: 0, askAroundCreators: 0 };
+  const row = (data as { new_users: number; ask_around_creators: number }[])[0];
+  return { newUsers: row?.new_users ?? 0, askAroundCreators: row?.ask_around_creators ?? 0 };
+}
