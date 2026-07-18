@@ -30,3 +30,16 @@ export async function getPoolCompletionByCategory(): Promise<BarDatum[]> {
     }))
     .sort((a, b) => b.value - a.value);
 }
+
+/**
+ * Distinct users who have engaged with the "Ask Around" pool category
+ * (pools.category = 'ask_around'), either by creating one or by joining
+ * someone else's. All-time, bot accounts excluded. Backed by
+ * analytics_ask_around_users() (migration 021).
+ */
+export async function getAskAroundEngagedUsers(): Promise<number> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("analytics_ask_around_users");
+  if (error || data == null) return 0;
+  return data as number;
+}

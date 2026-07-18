@@ -11,7 +11,7 @@ import {
   type RetentionCohort,
 } from "@/lib/db/activityBreakdown";
 import { getTopCollegesByUsers } from "@/lib/db/growthBreakdown";
-import { getPoolCompletionByCategory } from "@/lib/db/poolBreakdown";
+import { getPoolCompletionByCategory, getAskAroundEngagedUsers } from "@/lib/db/poolBreakdown";
 import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import type { BarDatum } from "@/components/kpi/BarChartCard";
 import type { InlineKeyboardButton } from "@/lib/telegram/client";
@@ -44,6 +44,7 @@ const ACTIVITY_SUBMENU: InlineKeyboardButton[][] = [
     { text: "Retention cohorts", callback_data: "retention" },
     { text: "Top colleges", callback_data: "top_colleges" },
   ],
+  [{ text: "Ask Around users", callback_data: "ask_around" }],
   [{ text: "⬅️ Back", callback_data: "menu" }],
 ];
 
@@ -127,6 +128,11 @@ function formatPercentBreakdown(title: string, rows: BarDatum[]): string {
   return [title, ...lines, "", nowAsOf() + " (live)"].join("\n");
 }
 
+/** For a single live headline number (e.g. "how many users have ever done X"). */
+function formatStat(title: string, value: number): string {
+  return `${title}\n${value.toLocaleString()}\n\n${nowAsOf()} (live)`;
+}
+
 /** Matches the % rounding in src/app/(dashboard)/retention/page.tsx's pct(). */
 function pct(retained: number, cohortSize: number): string {
   if (!cohortSize) return "N/A";
@@ -204,6 +210,10 @@ const FIXED_WINDOW_INTENTS: Record<string, () => Promise<IntentResult>> = {
   }),
   pool_completion: async () => ({
     text: formatPercentBreakdown("✅ Pool completion rate by category", await getPoolCompletionByCategory()),
+    keyboard: MAIN_MENU,
+  }),
+  ask_around: async () => ({
+    text: formatStat("🙋 Users who created or joined an Ask Around", await getAskAroundEngagedUsers()),
     keyboard: MAIN_MENU,
   }),
 };
@@ -289,6 +299,7 @@ type Metric =
   | "retention"
   | "top_colleges"
   | "pool_completion"
+  | "ask_around"
   | "growth"
   | "pools"
   | "chat"
@@ -311,6 +322,7 @@ const METRIC_LABELS: Record<Metric, string> = {
   retention: "retention cohorts, how many users come back week over week",
   top_colleges: "top colleges/universities ranked by number of verified users",
   pool_completion: "pool completion rate broken down by pool category",
+  ask_around: "how many users have created or joined an Ask Around pool/post, all-time",
   growth: "Growth dashboard: signups, verification rates, referrals, where new users come from",
   pools: "Pools dashboard: pool creation, participation, completion rates, pool sizes",
   chat: "Chat dashboard: messaging activity, rooms, chat members, chat requests",
@@ -328,6 +340,7 @@ const FIXED_WINDOW_METRICS = new Set<Metric>([
   "retention",
   "top_colleges",
   "pool_completion",
+  "ask_around",
 ]);
 
 const KPI_METRICS = new Set<Metric>(["growth", "pools", "chat", "trust", "monetization", "matching", "aicopilot"]);
@@ -341,6 +354,7 @@ const METRIC_TO_INTENT_KEY: Partial<Record<Metric, string>> = {
   retention: "retention",
   top_colleges: "top_colleges",
   pool_completion: "pool_completion",
+  ask_around: "ask_around",
   growth: "growth",
   pools: "pools",
   chat: "chat",
