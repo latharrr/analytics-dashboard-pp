@@ -25,6 +25,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/activation", label: "Activation" },
       { href: "/engagement", label: "Engagement" },
       { href: "/retention", label: "Retention" },
+      { href: "/new-user-activity", label: "New User Activity" },
     ],
   },
   {

@@ -18,6 +18,7 @@ import {
   getAskAroundCreatorVerification,
   type VerificationBreakdown,
 } from "@/lib/db/poolBreakdown";
+import { getNewUserActivitySummary } from "@/lib/db/newUserActivity";
 import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import type { BarDatum } from "@/components/kpi/BarChartCard";
 import type { InlineKeyboardButton } from "@/lib/telegram/client";
@@ -54,6 +55,7 @@ const ACTIVITY_SUBMENU: InlineKeyboardButton[][] = [
     { text: "Ask Around users", callback_data: "ask_around" },
     { text: "Ask Around by new users", callback_data: "ask_around_new_users" },
   ],
+  [{ text: "New user activity", callback_data: "new_user_activity" }],
   [{ text: "⬅️ Back", callback_data: "menu" }],
 ];
 
@@ -88,17 +90,20 @@ function rangeMenu(prefix: "nu" | "au"): InlineKeyboardButton[][] {
   ];
 }
 
-const ASK_AROUND_NEW_USERS_RANGE_MENU: InlineKeyboardButton[][] = [
-  [
-    { text: "Last 1 day", callback_data: "aanu:1" },
-    { text: "Last 7 days", callback_data: "aanu:7" },
-  ],
-  [
-    { text: "Last 15 days", callback_data: "aanu:15" },
-    { text: "Last 30 days", callback_data: "aanu:30" },
-  ],
-  [{ text: "⬅️ Back", callback_data: "menu" }],
-];
+/** 1/7/15/30-day picker, for metrics scoped to a "new users" cohort rather than a day-by-day trend. */
+function fourWayRangeMenu(prefix: string): InlineKeyboardButton[][] {
+  return [
+    [
+      { text: "Last 1 day", callback_data: `${prefix}:1` },
+      { text: "Last 7 days", callback_data: `${prefix}:7` },
+    ],
+    [
+      { text: "Last 15 days", callback_data: `${prefix}:15` },
+      { text: "Last 30 days", callback_data: `${prefix}:30` },
+    ],
+    [{ text: "⬅️ Back", callback_data: "menu" }],
+  ];
+}
 
 function nowAsOf(): string {
   return `As of ${formatAsOf(new Date().toISOString())}`;
@@ -240,6 +245,19 @@ export async function runAskAroundByNewUsersIntent(daysRaw: number): Promise<Int
   };
 }
 
+/** Shared by both the fixed 1/7/15/30 range buttons and free-text queries with an arbitrary day count. */
+export async function runNewUserActivityIntent(daysRaw: number): Promise<IntentResult> {
+  const days = Math.min(Math.max(Math.round(daysRaw), 1), MAX_SERIES_DAYS);
+  const rows = await getNewUserActivitySummary(days);
+  const to = new Date();
+  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  const title = `🆕 New user activity — last ${days} day${days > 1 ? "s" : ""}`;
+  const dateRange = `${formatAsOf(from.toISOString())} → ${formatAsOf(to.toISOString())}`;
+  const lines = rows.map((r) => `${r.label}: ${r.value.toLocaleString()}`);
+  const text = [title, dateRange, "", ...lines, "", nowAsOf() + " (live)"].join("\n");
+  return { text, keyboard: MAIN_MENU };
+}
+
 /** Single-shot breakdowns with a fixed internal window (same as their dashboard pages — no range picker). */
 const FIXED_WINDOW_INTENTS: Record<string, () => Promise<IntentResult>> = {
   hourly: async () => ({
@@ -319,7 +337,10 @@ export async function runIntent(key: string): Promise<IntentResult | null> {
     return { text: "Active users per day — choose a range:", keyboard: rangeMenu("au") };
   }
   if (key === "ask_around_new_users") {
-    return { text: "Ask Around created by new users — choose a range:", keyboard: ASK_AROUND_NEW_USERS_RANGE_MENU };
+    return { text: "Ask Around created by new users — choose a range:", keyboard: fourWayRangeMenu("aanu") };
+  }
+  if (key === "new_user_activity") {
+    return { text: "New user activity — choose a range:", keyboard: fourWayRangeMenu("nua") };
   }
   if (key in FIXED_WINDOW_INTENTS) {
     return FIXED_WINDOW_INTENTS[key]();
@@ -336,6 +357,9 @@ export async function runIntent(key: string): Promise<IntentResult | null> {
   }
   if (prefix === "aanu" && [1, 7, 15, 30].includes(days)) {
     return runAskAroundByNewUsersIntent(days);
+  }
+  if (prefix === "nua" && [1, 7, 15, 30].includes(days)) {
+    return runNewUserActivityIntent(days);
   }
 
   return null;
@@ -376,6 +400,7 @@ type Metric =
   | "pool_completion"
   | "ask_around"
   | "ask_around_new_users"
+  | "new_user_activity"
   | "growth"
   | "pools"
   | "chat"
@@ -400,6 +425,7 @@ const METRIC_LABELS: Record<Metric, string> = {
   pool_completion: "pool completion rate broken down by pool category",
   ask_around: "how many users have created or joined an Ask Around pool/post, all-time",
   ask_around_new_users: "of users who signed up recently (new users), how many created an Ask Around pool/post — a day-count cohort conversion, e.g. 'ask around by new users last 15 days'",
+  new_user_activity: "what activity new users (recent signups) have done — chat, joining/creating a pool, trust actions — broken down by type, over a period of days, e.g. 'what have new users done in the last 15 days'",
   growth: "Growth dashboard: signups, verification rates, referrals, where new users come from",
   pools: "Pools dashboard: pool creation, participation, completion rates, pool sizes",
   chat: "Chat dashboard: messaging activity, rooms, chat members, chat requests",
@@ -501,6 +527,9 @@ export async function runMetric(metric: Metric, questionText: string): Promise<I
   }
   if (metric === "ask_around_new_users") {
     return runAskAroundByNewUsersIntent(extractDayCount(questionText) ?? 7);
+  }
+  if (metric === "new_user_activity") {
+    return runNewUserActivityIntent(extractDayCount(questionText) ?? 7);
   }
   if (FIXED_WINDOW_METRICS.has(metric) || KPI_METRICS.has(metric)) {
     const key = METRIC_TO_INTENT_KEY[metric];
