@@ -8,31 +8,22 @@ export interface DauWauMau {
 }
 
 /**
- * Live (not nightly-refreshed) snapshot counts, since these are cheap
- * single-column count queries. "Active" = users.last_activity within the
- * window; this is a real per-user last-seen timestamp, not a historical
- * event log, so this is a current snapshot, not a trend over past days.
+ * Live (not nightly-refreshed) snapshot counts. "Active" = users.last_activity
+ * within the window; this is a real per-user last-seen timestamp, not a
+ * historical event log, so this is a current snapshot, not a trend over past
+ * days. Goes through analytics_dau_wau_mau() (migration 018) rather than
+ * head-counting public.users directly, because the raw table holds duplicate
+ * import snapshots of each user and must be deduplicated by id.
  */
 export async function getDauWauMau(): Promise<DauWauMau> {
   const supabase = getServiceClient();
-  const now = Date.now();
-  const cutoffs = {
-    dau: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
-    wau: new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    mau: new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString(),
-  };
-
-  const [dau, wau, mau] = await Promise.all(
-    [cutoffs.dau, cutoffs.wau, cutoffs.mau].map((cutoff) =>
-      supabase
-        .from("users")
-        .select("id", { count: "exact", head: true })
-        .eq("is_bot", false)
-        .gte("last_activity", cutoff)
-    )
-  );
-
-  return { dau: dau.count ?? 0, wau: wau.count ?? 0, mau: mau.count ?? 0 };
+  const { data, error } = await supabase.rpc("analytics_dau_wau_mau");
+  if (error || !data) {
+    if (error) console.error("getDauWauMau failed:", error.message);
+    return { dau: 0, wau: 0, mau: 0 };
+  }
+  const row = (data as { dau: number; wau: number; mau: number }[])[0];
+  return { dau: row?.dau ?? 0, wau: row?.wau ?? 0, mau: row?.mau ?? 0 };
 }
 
 function formatDay(iso: string): string {
@@ -58,6 +49,19 @@ export async function getActiveUsersPerDay(daysBack = 14): Promise<BarDatum[]> {
     label: formatDay(r.day),
     value: r.active_users,
   }));
+}
+
+/**
+ * Distinct active users across the whole window (migration 019), not a sum
+ * of per-day counts. A user active on multiple days within the range is
+ * counted once here; summing getActiveUsersPerDay()'s rows would count them
+ * once per day they showed up.
+ */
+export async function getActiveUsersTotal(daysBack = 14): Promise<number> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("analytics_active_users_total", { days_back: daysBack });
+  if (error || data == null) return 0;
+  return data as number;
 }
 
 /** Proxy for "peak active hours"/"hourly traffic": same activity signals, grouped by hour of day. */

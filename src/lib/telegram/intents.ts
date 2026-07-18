@@ -2,6 +2,7 @@ import {
   getDauWauMau,
   getNewUsersPerDay,
   getActiveUsersPerDay,
+  getActiveUsersTotal,
   getActivityByHour,
   getActiveUsersByProximity,
   getFeatureAdoption,
@@ -9,6 +10,8 @@ import {
   getRetentionCohorts,
   type RetentionCohort,
 } from "@/lib/db/activityBreakdown";
+import { getTopCollegesByUsers } from "@/lib/db/growthBreakdown";
+import { getPoolCompletionByCategory } from "@/lib/db/poolBreakdown";
 import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import type { BarDatum } from "@/components/kpi/BarChartCard";
 import type { InlineKeyboardButton } from "@/lib/telegram/client";
@@ -37,7 +40,10 @@ const ACTIVITY_SUBMENU: InlineKeyboardButton[][] = [
     { text: "Feature adoption", callback_data: "features" },
     { text: "Activation funnel", callback_data: "funnel" },
   ],
-  [{ text: "Retention cohorts", callback_data: "retention" }],
+  [
+    { text: "Retention cohorts", callback_data: "retention" },
+    { text: "Top colleges", callback_data: "top_colleges" },
+  ],
   [{ text: "⬅️ Back", callback_data: "menu" }],
 ];
 
@@ -54,7 +60,10 @@ const KPI_SUBMENU: InlineKeyboardButton[][] = [
     { text: "Monetization", callback_data: "monetization" },
     { text: "Matching", callback_data: "matching" },
   ],
-  [{ text: "AI/Copilot", callback_data: "aicopilot" }],
+  [
+    { text: "AI/Copilot", callback_data: "aicopilot" },
+    { text: "Pool completion %", callback_data: "pool_completion" },
+  ],
   [{ text: "⬅️ Back", callback_data: "menu" }],
 ];
 
@@ -78,7 +87,7 @@ async function formatSnapshot(): Promise<string> {
   return `📊 DAU: ${dau.toLocaleString()}\nWAU: ${wau.toLocaleString()}\nMAU: ${mau.toLocaleString()}\n\n${nowAsOf()} (live)`;
 }
 
-/** For genuine day-by-day trends, where summing across the period is meaningful. */
+/** For genuine day-by-day trends, where summing across the period is meaningful (e.g. new users — each person signs up on exactly one day). */
 function formatSeries(title: string, rows: BarDatum[]): string {
   if (rows.length === 0) return `${title}\nNo data.\n\n${nowAsOf()} (live)`;
   const lines = rows.map((r) => `${r.label}: ${r.value.toLocaleString()}`);
@@ -86,10 +95,35 @@ function formatSeries(title: string, rows: BarDatum[]): string {
   return [title, ...lines, `Total: ${total.toLocaleString()}`, "", nowAsOf() + " (live)"].join("\n");
 }
 
+/**
+ * For active users specifically: the same person can be active on several
+ * days within the range, so summing the daily rows (like formatSeries does)
+ * double-counts them. `uniqueTotal` comes from getActiveUsersTotal(), a
+ * separate distinct-across-the-whole-range query, not a sum of `rows`.
+ */
+function formatActiveSeries(title: string, rows: BarDatum[], uniqueTotal: number): string {
+  if (rows.length === 0) return `${title}\nNo data.\n\n${nowAsOf()} (live)`;
+  const lines = rows.map((r) => `${r.label}: ${r.value.toLocaleString()}`);
+  return [
+    title,
+    ...lines,
+    `Unique active users this period: ${uniqueTotal.toLocaleString()}`,
+    "",
+    nowAsOf() + " (live)",
+  ].join("\n");
+}
+
 /** For breakdowns where the categories overlap (a user can use multiple features, live near multiple colleges, etc.), so a "Total" line would be misleading. */
 function formatBreakdown(title: string, rows: BarDatum[]): string {
   if (rows.length === 0) return `${title}\nNo data.\n\n${nowAsOf()} (live)`;
   const lines = rows.map((r) => `${r.label}: ${r.value.toLocaleString()}`);
+  return [title, ...lines, "", nowAsOf() + " (live)"].join("\n");
+}
+
+/** Same as formatBreakdown, but for rows whose value is already a percentage (e.g. completion rate per category). */
+function formatPercentBreakdown(title: string, rows: BarDatum[]): string {
+  if (rows.length === 0) return `${title}\nNo data.\n\n${nowAsOf()} (live)`;
+  const lines = rows.map((r) => `${r.label}: ${r.value}%`);
   return [title, ...lines, "", nowAsOf() + " (live)"].join("\n");
 }
 
@@ -132,11 +166,14 @@ const MAX_SERIES_DAYS = 90;
 /** Shared by both the fixed 1/7/30 range buttons and free-text queries with an arbitrary day count. */
 export async function runSeriesIntent(prefix: "nu" | "au", daysRaw: number): Promise<IntentResult> {
   const days = Math.min(Math.max(Math.round(daysRaw), 1), MAX_SERIES_DAYS);
-  const rows = prefix === "nu" ? await getNewUsersPerDay(days) : await getActiveUsersPerDay(days);
-  const noun = prefix === "nu" ? "New users" : "Active users";
-  const emoji = prefix === "nu" ? "🆕" : "👥";
-  const title = `${emoji} ${noun} — last ${days} day${days > 1 ? "s" : ""}`;
-  return { text: formatSeries(title, rows), keyboard: MAIN_MENU };
+  if (prefix === "nu") {
+    const rows = await getNewUsersPerDay(days);
+    const title = `🆕 New users — last ${days} day${days > 1 ? "s" : ""}`;
+    return { text: formatSeries(title, rows), keyboard: MAIN_MENU };
+  }
+  const [rows, uniqueTotal] = await Promise.all([getActiveUsersPerDay(days), getActiveUsersTotal(days)]);
+  const title = `👥 Active users — last ${days} day${days > 1 ? "s" : ""}`;
+  return { text: formatActiveSeries(title, rows, uniqueTotal), keyboard: MAIN_MENU };
 }
 
 /** Single-shot breakdowns with a fixed internal window (same as their dashboard pages — no range picker). */
@@ -159,6 +196,14 @@ const FIXED_WINDOW_INTENTS: Record<string, () => Promise<IntentResult>> = {
   }),
   retention: async () => ({
     text: formatRetention(await getRetentionCohorts()),
+    keyboard: MAIN_MENU,
+  }),
+  top_colleges: async () => ({
+    text: formatBreakdown("🎓 Top colleges by user count", await getTopCollegesByUsers(5)),
+    keyboard: MAIN_MENU,
+  }),
+  pool_completion: async () => ({
+    text: formatPercentBreakdown("✅ Pool completion rate by category", await getPoolCompletionByCategory()),
     keyboard: MAIN_MENU,
   }),
 };
@@ -242,6 +287,8 @@ type Metric =
   | "feature_adoption"
   | "activation_funnel"
   | "retention"
+  | "top_colleges"
+  | "pool_completion"
   | "growth"
   | "pools"
   | "chat"
@@ -262,6 +309,8 @@ const METRIC_LABELS: Record<Metric, string> = {
   feature_adoption: "which features are used, feature adoption/usage breakdown, last 30 days",
   activation_funnel: "the activation/onboarding funnel, signup-to-active-user stages, last 30 days",
   retention: "retention cohorts, how many users come back week over week",
+  top_colleges: "top colleges/universities ranked by number of verified users",
+  pool_completion: "pool completion rate broken down by pool category",
   growth: "Growth dashboard: signups, verification rates, referrals, where new users come from",
   pools: "Pools dashboard: pool creation, participation, completion rates, pool sizes",
   chat: "Chat dashboard: messaging activity, rooms, chat members, chat requests",
@@ -277,6 +326,8 @@ const FIXED_WINDOW_METRICS = new Set<Metric>([
   "feature_adoption",
   "activation_funnel",
   "retention",
+  "top_colleges",
+  "pool_completion",
 ]);
 
 const KPI_METRICS = new Set<Metric>(["growth", "pools", "chat", "trust", "monetization", "matching", "aicopilot"]);
@@ -288,6 +339,8 @@ const METRIC_TO_INTENT_KEY: Partial<Record<Metric, string>> = {
   feature_adoption: "features",
   activation_funnel: "funnel",
   retention: "retention",
+  top_colleges: "top_colleges",
+  pool_completion: "pool_completion",
   growth: "growth",
   pools: "pools",
   chat: "chat",

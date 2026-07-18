@@ -106,7 +106,11 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     if (result) {
       await sendTelegramMessage(chatId, result.text, result.keyboard);
     } else {
-      await sendTelegramMessage(chatId, "Not sure what you mean — here's what I can show you:", MAIN_MENU);
+      await sendTelegramMessage(
+        chatId,
+        "I didn't catch a specific metric in that — here's everything I can pull up, tap any button:",
+        MAIN_MENU
+      );
     }
     return;
   }
