@@ -3,6 +3,7 @@ import { getTopCollegesByUsers } from "@/lib/db/growthBreakdown";
 import {
   getActiveUsersByProximity,
   getActiveUsersPerDay,
+  getActiveUsersTotal,
   getActivityByHour,
   getDauWauMau,
   getFeatureAdoption,
@@ -22,6 +23,7 @@ export default async function OverviewPage() {
     dauWauMau,
     newUsersPerDay,
     activeUsersPerDay,
+    activeUsersTotal14d,
     activityByHour,
     proximity,
     featureAdoption,
@@ -32,6 +34,7 @@ export default async function OverviewPage() {
     getDauWauMau(),
     getNewUsersPerDay(14),
     getActiveUsersPerDay(14),
+    getActiveUsersTotal(14),
     getActivityByHour(),
     getActiveUsersByProximity(),
     getFeatureAdoption(),
@@ -45,10 +48,11 @@ export default async function OverviewPage() {
         description="Growth KPIs and a cross-module summary. Materialized-view stats refresh nightly; DAU/WAU/MAU and the charts below are computed live."
       />
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Daily Active Users" value={dauWauMau.dau} asOf={liveAsOf} />
         <StatTile label="Weekly Active Users" value={dauWauMau.wau} asOf={liveAsOf} />
         <StatTile label="Monthly Active Users" value={dauWauMau.mau} asOf={liveAsOf} />
+        <StatTile label="Unique active users (last 14 days)" value={activeUsersTotal14d} asOf={liveAsOf} />
       </div>
 
       <StatTileGrid row={growth} asOf={mvAsOf} />
