@@ -9,6 +9,7 @@ import {
   getFeatureAdoption,
   getNewUsersPerDay,
 } from "@/lib/db/activityBreakdown";
+import { getNewUserLocationsSummary } from "@/lib/db/newUserLocations";
 import { StatTile, StatTileGrid } from "@/components/kpi/StatTile";
 import { BarChartCard } from "@/components/kpi/BarChartCard";
 import { KpiPageHeader } from "@/components/kpi/KpiPageHeader";
@@ -27,6 +28,7 @@ export default async function OverviewPage() {
     activityByHour,
     proximity,
     featureAdoption,
+    newUserLocations,
   ] = await Promise.all([
     getKpiSnapshot("mv_growth_kpis"),
     getRefreshInfo(),
@@ -38,6 +40,7 @@ export default async function OverviewPage() {
     getActivityByHour(),
     getActiveUsersByProximity(),
     getFeatureAdoption(),
+    getNewUserLocationsSummary(30),
   ]);
   const mvAsOf = refreshInfo?.refreshed_at;
 
@@ -87,6 +90,12 @@ export default async function OverviewPage() {
           title="Feature adoption (last 30 days)"
           data={featureAdoption}
           valueLabel="active users"
+          asOf={liveAsOf}
+        />
+        <BarChartCard
+          title="New users by location (last 30 days)"
+          data={newUserLocations}
+          valueLabel="new users"
           asOf={liveAsOf}
         />
       </div>

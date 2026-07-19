@@ -19,6 +19,7 @@ import {
   type VerificationBreakdown,
 } from "@/lib/db/poolBreakdown";
 import { getNewUserActivitySummary } from "@/lib/db/newUserActivity";
+import { getNewUserLocationsSummary } from "@/lib/db/newUserLocations";
 import { getPgFlatLeadsSummary } from "@/lib/db/pgFlatLeads";
 import { getKpiSnapshot, getRefreshInfo } from "@/lib/db/kpi";
 import type { BarDatum } from "@/components/kpi/BarChartCard";
@@ -57,6 +58,7 @@ const ACTIVITY_SUBMENU: InlineKeyboardButton[][] = [
     { text: "Ask Around by new users", callback_data: "ask_around_new_users" },
   ],
   [{ text: "New user activity", callback_data: "new_user_activity" }],
+  [{ text: "New users by location", callback_data: "new_user_locations" }],
   [{ text: "PG/Flat leads (30d)", callback_data: "pg_flat_leads" }],
   [{ text: "⬅️ Back", callback_data: "menu" }],
 ];
@@ -260,6 +262,18 @@ export async function runNewUserActivityIntent(daysRaw: number): Promise<IntentR
   return { text, keyboard: MAIN_MENU };
 }
 
+/** Shared by both the fixed 1/7/15/30 range buttons and free-text queries with an arbitrary day count. */
+export async function runNewUserLocationsIntent(daysRaw: number): Promise<IntentResult> {
+  const days = Math.min(Math.max(Math.round(daysRaw), 1), MAX_SERIES_DAYS);
+  const rows = await getNewUserLocationsSummary(days);
+  const title = `📍 New users by location — last ${days} day${days > 1 ? "s" : ""}`;
+  const text = [
+    formatBreakdown(title, rows),
+    "Names and phone numbers aren't sent here — see New User Locations on the dashboard to view and export contacts.",
+  ].join("\n");
+  return { text, keyboard: MAIN_MENU };
+}
+
 /** Single-shot breakdowns with a fixed internal window (same as their dashboard pages — no range picker). */
 const FIXED_WINDOW_INTENTS: Record<string, () => Promise<IntentResult>> = {
   hourly: async () => ({
@@ -352,6 +366,9 @@ export async function runIntent(key: string): Promise<IntentResult | null> {
   if (key === "new_user_activity") {
     return { text: "New user activity — choose a range:", keyboard: fourWayRangeMenu("nua") };
   }
+  if (key === "new_user_locations") {
+    return { text: "New users by location — choose a range:", keyboard: fourWayRangeMenu("nul") };
+  }
   if (key in FIXED_WINDOW_INTENTS) {
     return FIXED_WINDOW_INTENTS[key]();
   }
@@ -370,6 +387,9 @@ export async function runIntent(key: string): Promise<IntentResult | null> {
   }
   if (prefix === "nua" && [1, 7, 15, 30].includes(days)) {
     return runNewUserActivityIntent(days);
+  }
+  if (prefix === "nul" && [1, 7, 15, 30].includes(days)) {
+    return runNewUserLocationsIntent(days);
   }
 
   return null;
@@ -411,6 +431,7 @@ type Metric =
   | "ask_around"
   | "ask_around_new_users"
   | "new_user_activity"
+  | "new_user_locations"
   | "pg_flat_leads"
   | "growth"
   | "pools"
@@ -437,6 +458,7 @@ const METRIC_LABELS: Record<Metric, string> = {
   ask_around: "how many users have created or joined an Ask Around pool/post, all-time",
   ask_around_new_users: "of users who signed up recently (new users), how many created an Ask Around pool/post — a day-count cohort conversion, e.g. 'ask around by new users last 15 days'",
   new_user_activity: "what activity new users (recent signups) have done — chat, joining/creating a pool, trust actions — broken down by type, over a period of days, e.g. 'what have new users done in the last 15 days'",
+  new_user_locations: "new users (recent signups) broken down by nearest college/location, e.g. 'where are new users signing up from', 'new user locations last 7 days' — aggregate counts only here, no names or phone numbers",
   pg_flat_leads: "PG search / Flat listing / Flatmate listing leads count, last 30 days (aggregate counts only — no names or phone numbers here)",
   growth: "Growth dashboard: signups, verification rates, referrals, where new users come from",
   pools: "Pools dashboard: pool creation, participation, completion rates, pool sizes",
@@ -544,6 +566,9 @@ export async function runMetric(metric: Metric, questionText: string): Promise<I
   }
   if (metric === "new_user_activity") {
     return runNewUserActivityIntent(extractDayCount(questionText) ?? 7);
+  }
+  if (metric === "new_user_locations") {
+    return runNewUserLocationsIntent(extractDayCount(questionText) ?? 7);
   }
   if (FIXED_WINDOW_METRICS.has(metric) || KPI_METRICS.has(metric)) {
     const key = METRIC_TO_INTENT_KEY[metric];
