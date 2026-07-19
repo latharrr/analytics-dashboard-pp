@@ -31,8 +31,8 @@ LANGUAGE sql STABLE AS $$
       u.id AS user_id,
       u.name AS user_name,
       u.phone,
-      u.created_at AS signed_up_at,
-      coalesce(nearest.name, 'Unknown / no college nearby') AS location_label
+      coalesce(nearest.name, 'Unknown / no college nearby') AS location_label,
+      u.created_at AS signed_up_at
     FROM dedup.users u
     LEFT JOIN LATERAL (
       SELECT col.name
