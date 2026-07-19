@@ -1,12 +1,18 @@
 import { getServiceClient } from "@/lib/supabase/server";
-import { reverseGeocode } from "@/lib/geocoding/googleMaps";
+import { reverseGeocode } from "@/lib/geocoding/locationIq";
 
 const PRECISION = 3; // ~111m grid — nearby signups from the same building/campus share one cached lookup
 const GRID = 10 ** PRECISION;
 
-/** Caps how many *new* (uncached) Google API calls a single request can trigger, so a cold cache can't turn one page load into thousands of paid geocode calls. Leftover points fall back to "Unknown location" and get resolved on a later request once the cache is warmer. */
-const MAX_LOOKUPS_PER_CALL = 40;
-const CONCURRENCY = 8;
+/** Caps how many *new* (uncached) geocode calls a single request can trigger, so a cold cache can't turn one page load into a huge burst of API calls. Leftover points fall back to "Unknown location" and get resolved on a later request once the cache is warmer. */
+const MAX_LOOKUPS_PER_CALL = 20;
+/** LocationIQ's free tier caps at ~2 requests/second — batch size 2 + a delay between batches keeps us under that. */
+const CONCURRENCY = 2;
+const BATCH_DELAY_MS = 1100;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function round(n: number): number {
   return Math.round(n * GRID) / GRID;
@@ -35,9 +41,10 @@ interface CacheRow {
 
 /**
  * Resolves a batch of (lat, lng) points to "City, State" labels, backed by
- * analytics_geocode_cache (migration 028). Cache misses call the Google
- * Maps Geocoding API (capped at MAX_LOOKUPS_PER_CALL per call) and write
- * results back so the same coordinate never re-hits the paid API twice.
+ * analytics_geocode_cache (migration 028). Cache misses call LocationIQ's
+ * reverse-geocoding API (capped at MAX_LOOKUPS_PER_CALL per call, rate-limited
+ * to respect its free-tier ~2 req/sec cap) and write results back so the
+ * same coordinate never re-hits the API twice.
  */
 export async function resolveLocationLabels(
   points: { lat: number; lng: number }[]
@@ -75,6 +82,7 @@ export async function resolveLocationLabels(
       result.set(key, geo ? formatLabel(geo.city, geo.state) : null);
       if (geo) toUpsert.push({ lat: coord.lat, lng: coord.lng, city: geo.city, state: geo.state });
     }
+    if (i + CONCURRENCY < missing.length) await sleep(BATCH_DELAY_MS);
   }
 
   if (toUpsert.length > 0) {

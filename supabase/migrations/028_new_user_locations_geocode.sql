@@ -5,12 +5,12 @@
 -- within 5km of a tracked college) were showing as "Unknown".
 --
 -- Reverse geocoding itself (raw lat/lng -> city/state) happens app-side via
--- the Google Maps Geocoding API (src/lib/geocoding/googleMaps.ts) — there's
--- no reverse-geocoding capability in this Postgres database. This migration
--- only does two things:
+-- LocationIQ's free-tier reverse-geocoding API (src/lib/geocoding/locationIq.ts)
+-- — there's no reverse-geocoding capability in this Postgres database. This
+-- migration only does two things:
 --   1. analytics_geocode_cache: a cache table keyed on coordinates rounded
 --      to 3 decimal places (~111m), so the same building/campus never
---      re-hits the paid Google API twice. Written/read only via the
+--      re-calls the API twice. Written/read only via the
 --      service-role client (src/lib/db/geocodeCache.ts) — same pattern as
 --      analytics_rate_limits (migration 012) and analytics_telegram_subscribers
 --      (migration 016), no explicit grants needed.
