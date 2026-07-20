@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import type { DateRangeFilter } from "@/lib/db/explorer";
 
-const RESERVED_EXPORT_PARAMS = new Set(["sort", "dir", "dateColumn", "dateFrom", "dateTo"]);
+const RESERVED_EXPORT_PARAMS = new Set(["sort", "dir", "dateColumn", "dateFrom", "dateTo", "limit"]);
 
 export interface ExportParams {
   sortColumn?: string;
@@ -30,4 +30,16 @@ export function parseExportParams(request: NextRequest): ExportParams {
     filters,
     dateRange: dateColumn ? { column: dateColumn, from: dateFrom ?? undefined, to: dateTo ?? undefined } : undefined,
   };
+}
+
+/**
+ * Reads the "how many rows" choice from the export panel (ExportButton),
+ * clamped to `maxCap` so a hand-edited URL can't exceed the route's hard
+ * cap. Falls back to `maxCap` when absent/invalid, matching the export
+ * routes' pre-existing "always export everything up to the cap" default.
+ */
+export function parseLimitParam(request: NextRequest, maxCap: number): number {
+  const raw = Number(request.nextUrl.searchParams.get("limit"));
+  if (!Number.isFinite(raw) || raw <= 0) return maxCap;
+  return Math.min(Math.floor(raw), maxCap);
 }

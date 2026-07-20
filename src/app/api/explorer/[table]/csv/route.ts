@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isExplorableTable, queryTable, toCsv } from "@/lib/db/explorer";
 import { getColumnTypesForTable } from "@/lib/db/schemaCache";
-import { parseExportParams } from "@/lib/db/exportParams";
+import { parseExportParams, parseLimitParam } from "@/lib/db/exportParams";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 import { getClientIp } from "@/lib/security/clientIp";
 
@@ -25,12 +25,13 @@ export async function GET(request: NextRequest, { params }: { params: { table: s
   }
 
   const { sortColumn, sortDir, filters, dateRange } = parseExportParams(request);
+  const rowLimit = parseLimitParam(request, CSV_ROW_CAP);
   const columnTypes = await getColumnTypesForTable(table);
 
   try {
     const { rows } = await queryTable(table, {
       page: 1,
-      pageSize: CSV_ROW_CAP,
+      pageSize: rowLimit,
       sortColumn,
       sortDir,
       filters,

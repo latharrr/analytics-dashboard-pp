@@ -17,11 +17,14 @@ export interface VerifiedUsersResult {
   totalCount: number;
 }
 
+export type VerificationFilter = "both" | "digilocker" | "college" | "either";
+
 export interface VerifiedUsersFilters {
   dateFrom?: string;
   dateTo?: string;
   search?: string;
   college?: string;
+  verificationFilter?: VerificationFilter;
 }
 
 interface DetailRow {
@@ -38,9 +41,12 @@ interface DetailRow {
 }
 
 /**
- * Users verified via both Digilocker and college ID. Backed by
- * analytics_verified_users_detail() (migration 029), which applies all
- * filters in SQL so the dashboard view and its CSV export always agree.
+ * Users verified via Digilocker and/or college ID — which combination
+ * depends on `filters.verificationFilter` ("both" by default, matching the
+ * original behavior; "digilocker"/"college" for a single method, "either"
+ * for at least one). Backed by analytics_verified_users_detail()
+ * (migrations 029, 039), which applies all filters in SQL so the dashboard
+ * view and its CSV/XLSX export always agree.
  */
 export async function getVerifiedUsers(
   filters: VerifiedUsersFilters,
@@ -53,6 +59,7 @@ export async function getVerifiedUsers(
     search_text: filters.search ?? null,
     college_search: filters.college ?? null,
     row_limit: rowLimit,
+    verification_filter: filters.verificationFilter ?? "both",
   });
   if (error) {
     console.error("getVerifiedUsers failed:", error.message);

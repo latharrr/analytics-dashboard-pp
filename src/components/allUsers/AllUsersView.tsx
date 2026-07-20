@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatAsOf, formatRelativeTime } from "@/lib/format";
 import { Spinner } from "@/components/Spinner";
+import { ExportButton } from "@/components/ExportButton";
+
+const EXPORT_ROW_CAP = 10_000;
 
 type SortBy = "last_active" | "signed_up" | "name" | "trust_score";
 type SortDir = "asc" | "desc";
@@ -184,20 +187,14 @@ export function AllUsersView() {
           </button>
         )}
         {data && <span className="text-sm text-ink-muted">{data.totalCount.toLocaleString()} users</span>}
-        <div className="ml-auto flex items-center gap-2">
-          <a
-            href={`/api/all-users/csv?${exportParams}`}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-          >
-            Export CSV
-          </a>
-          <a
-            href={`/api/all-users/xlsx?${exportParams}`}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-          >
-            Export Sheet (.xlsx)
-          </a>
-        </div>
+        <ExportButton
+          label="users"
+          csvHref="/api/all-users/csv"
+          xlsxHref="/api/all-users/xlsx"
+          params={exportParams}
+          maxRows={EXPORT_ROW_CAP}
+          className="ml-auto"
+        />
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border">

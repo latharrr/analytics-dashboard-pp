@@ -5,8 +5,10 @@ import { MODULES } from "@/lib/modules";
 import { formatValue, humanizeKey } from "@/lib/format";
 import { DATE_TYPES, NUMERIC_TYPES } from "@/lib/columnTypeGroups";
 import { Spinner } from "@/components/Spinner";
+import { ExportButton } from "@/components/ExportButton";
 
 const PAGE_SIZE = 50;
+const EXPORT_ROW_CAP = 10_000;
 
 interface ApiResponse {
   rows: Record<string, unknown>[];
@@ -138,20 +140,14 @@ export function DataTable() {
 
         {data && <span className="text-sm text-ink-muted">{data.count.toLocaleString()} rows</span>}
 
-        <div className="ml-auto flex items-center gap-2">
-          <a
-            href={`/api/explorer/${table}/csv?${exportParams}`}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-          >
-            Export CSV
-          </a>
-          <a
-            href={`/api/explorer/${table}/xlsx?${exportParams}`}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-          >
-            Export XLS
-          </a>
-        </div>
+        <ExportButton
+          label={table}
+          csvHref={`/api/explorer/${table}/csv`}
+          xlsxHref={`/api/explorer/${table}/xlsx`}
+          params={exportParams}
+          maxRows={EXPORT_ROW_CAP}
+          className="ml-auto"
+        />
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-4 rounded-xl border border-border bg-surface-raised p-3">

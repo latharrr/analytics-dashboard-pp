@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { formatAsOf, formatRelativeTime } from "@/lib/format";
 import { Spinner } from "@/components/Spinner";
+import { ExportButton } from "@/components/ExportButton";
+
+const EXPORT_ROW_CAP = 5_000;
 
 interface ApiLead {
   userId: string;
@@ -78,12 +81,14 @@ export function PgFlatLeadsView() {
           </button>
         )}
         {data && <span className="text-sm text-ink-muted">{data.totalCount.toLocaleString()} leads</span>}
-        <a
-          href={`/api/pg-flat-leads/csv?${exportParams.toString()}`}
-          className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-        >
-          Export CSV
-        </a>
+        <ExportButton
+          label="PG / Flat leads"
+          csvHref="/api/pg-flat-leads/csv"
+          xlsxHref="/api/pg-flat-leads/xlsx"
+          params={exportParams.toString()}
+          maxRows={EXPORT_ROW_CAP}
+          className="ml-auto"
+        />
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border">

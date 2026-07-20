@@ -3,9 +3,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { StatTile } from "@/components/kpi/StatTile";
 import { Spinner } from "@/components/Spinner";
+import { ExportButton } from "@/components/ExportButton";
 import { formatAsOf } from "@/lib/format";
 
 const RANGES = [1, 7, 15, 30] as const;
+const EXPORT_ROW_CAP = 5_000;
 
 // Chat overlaps almost entirely with "Joined a pool" — sending a message is how
 // a user joins a pool — so it's not shown as a standalone summary tile. It still
@@ -108,12 +110,14 @@ export function NewUserActivityView() {
             Last {r} day{r > 1 ? "s" : ""}
           </button>
         ))}
-        <a
-          href={`/api/new-user-activity/csv?days=${days}`}
-          className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-        >
-          Export CSV
-        </a>
+        <ExportButton
+          label="new user activity"
+          csvHref="/api/new-user-activity/csv"
+          xlsxHref="/api/new-user-activity/xlsx"
+          params={`days=${days}`}
+          maxRows={EXPORT_ROW_CAP}
+          className="ml-auto"
+        />
       </div>
 
       {data && (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllUsersForExport, type AllUsersSortBy, type SortDir } from "@/lib/db/allUsers";
 import { toXlsxBuffer } from "@/lib/db/explorer";
+import { parseLimitParam } from "@/lib/db/exportParams";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 import { getClientIp } from "@/lib/security/clientIp";
 
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
       sortBy,
       sortDir,
     },
-    ROW_CAP
+    parseLimitParam(request, ROW_CAP)
   );
 
   const buffer = toXlsxBuffer(
