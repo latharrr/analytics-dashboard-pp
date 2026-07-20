@@ -86,6 +86,27 @@ table). This file is the "how to work here" companion.
 7. **Bots**: exclude `dedup.users.is_bot = true` from all human metrics
    (the `vu_personas`/`bot_personas` virtual-user system, migration 020).
 
+8. **Every REST response silently caps at 1000 rows — including `.rpc()`.**
+   This project's Supabase API has the default **Max rows = 1000** (Settings →
+   API). A bare `supabase.from(t).select(...)` *and* a `supabase.rpc(fn, …)`
+   both return at most 1000 rows with no error, no matter how many the query
+   would produce. Two distinct failure modes, both seen here:
+   - **JS aggregation over a raw `public.*` table** hits the cap after only
+     ~330 distinct rows (raw tables are ~3× duplicated, #1) and undercounts.
+     **Fix**: aggregate in SQL on `dedup.*` (an `analytics_*` function) and
+     return the small result set — not raw rows into JS. This was migration
+     037 (top colleges, pool completion).
+   - **A detail RPC that returns many rows** is silently clipped to 1000 —
+     e.g. `analytics_new_user_locations_detail` (2,124 signups → showed 1,000)
+     and `analytics_new_user_activity_detail` (30,911 events → showed 1,000).
+     Raising the SQL-side `row_limit` does **not** help; PostgREST clips the
+     *response*. **Fix**: page the call with `.range(from, to)` in a loop until
+     a short page (see `getAllUsersForExport`, `fetchDetailRows` in
+     newUserLocations, `getNewUserActivityDetail`). Add `export const
+     maxDuration = 30` to routes that now make several paged calls.
+   - Where you page a whole small table (`analytics_geocode_cache`,
+     `analytics_telegram_subscribers`), the same `.range()` loop applies.
+
 ## Pages added in the recent work (session context)
 
 All under Tools/Dashboards in the sidebar. Each has a JSON route + (where

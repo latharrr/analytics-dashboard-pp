@@ -25,18 +25,29 @@ interface DetailRow {
   total_count: number;
 }
 
+/** PostgREST caps every response (incl. RPC results) at this project's "Max rows = 1000". */
+const RPC_PAGE_SIZE = 1000;
+
 async function fetchDetailRows(daysBack: number, rowLimit: number): Promise<DetailRow[]> {
   const supabase = getServiceClient();
-  const { data, error } = await supabase.rpc("analytics_new_user_locations_detail", {
-    days_back: daysBack,
-    row_limit: rowLimit,
-  });
-  if (error) {
-    console.error("getNewUserLocations failed:", error.message);
-    return [];
+  const rows: DetailRow[] = [];
+  // Page past the 1000-row PostgREST response cap; without this the location
+  // summary (which asks for up to 100k rows) and the CSV export silently
+  // aggregate only the most-recent 1000 signups and undercount every location.
+  for (let from = 0; from < rowLimit; from += RPC_PAGE_SIZE) {
+    const to = Math.min(from + RPC_PAGE_SIZE, rowLimit) - 1;
+    const { data, error } = await supabase
+      .rpc("analytics_new_user_locations_detail", { days_back: daysBack, row_limit: rowLimit })
+      .range(from, to);
+    if (error) {
+      console.error("getNewUserLocations failed:", error.message);
+      break;
+    }
+    const page = (data ?? []) as DetailRow[];
+    rows.push(...page);
+    if (page.length < to - from + 1) break;
   }
-  if (!data) return [];
-  return data as DetailRow[];
+  return rows;
 }
 
 function labelFor(row: DetailRow, labels: Map<string, string | null>): string {
@@ -46,9 +57,9 @@ function labelFor(row: DetailRow, labels: Map<string, string | null>): string {
 
 /**
  * New-user signups (users.created_at — there's no separate app-download
- * event in this data) reverse-geocoded to "City, State" via the Google
- * Maps Geocoding API, cached by coordinate (migration 028) so repeat
- * locations don't re-hit the API. Bot accounts excluded. Backed by
+ * event in this data) reverse-geocoded to "City, State" via LocationIQ's
+ * free-tier reverse-geocoding API, cached by coordinate (migration 028) so
+ * repeat locations don't re-hit the API. Bot accounts excluded. Backed by
  * analytics_new_user_locations_detail().
  */
 export async function getNewUserLocations(daysBack: number, rowLimit = 500): Promise<NewUserLocationsResult> {

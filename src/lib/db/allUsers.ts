@@ -78,19 +78,42 @@ export async function getAllUsers(
 
   const rows = data as DetailRow[];
   return {
-    users: rows.map((r) => ({
-      userId: r.user_id,
-      userName: r.user_name,
-      phone: r.phone,
-      signedUpAt: r.signed_up_at,
-      lastActiveAt: r.last_active_at,
-      trustScore: r.trust_score,
-      isVerified: r.is_verified,
-      isBanned: r.is_banned,
-      lastActivityType: r.last_activity_type,
-      lastActivityDetail: r.last_activity_detail,
-      lastActivityOccurredAt: r.last_activity_occurred_at,
-    })),
+    users: rows.map(mapRow),
     totalCount: rows[0]?.total_count ?? 0,
   };
+}
+
+function mapRow(r: DetailRow): AllUser {
+  return {
+    userId: r.user_id,
+    userName: r.user_name,
+    phone: r.phone,
+    signedUpAt: r.signed_up_at,
+    lastActiveAt: r.last_active_at,
+    trustScore: r.trust_score,
+    isVerified: r.is_verified,
+    isBanned: r.is_banned,
+    lastActivityType: r.last_activity_type,
+    lastActivityDetail: r.last_activity_detail,
+    lastActivityOccurredAt: r.last_activity_occurred_at,
+  };
+}
+
+/** PostgREST caps every response (including RPC results) at this project's "Max rows = 1000", so a single call can never return more than 1000 rows regardless of the SQL-side page_size. */
+const EXPORT_PAGE_SIZE = 1000;
+
+/**
+ * All users matching the filters, for CSV/XLSX export — paginated past the
+ * 1000-row PostgREST response cap by looping page_number. Without this, an
+ * export of a >1000-user base is silently truncated to 1000 rows even though
+ * the SQL function would return up to `cap`.
+ */
+export async function getAllUsersForExport(filters: AllUsersFilters, cap = 10_000): Promise<AllUser[]> {
+  const all: AllUser[] = [];
+  for (let page = 1; all.length < cap; page++) {
+    const { users } = await getAllUsers(filters, page, EXPORT_PAGE_SIZE);
+    all.push(...users);
+    if (users.length < EXPORT_PAGE_SIZE) break;
+  }
+  return all.slice(0, cap);
 }

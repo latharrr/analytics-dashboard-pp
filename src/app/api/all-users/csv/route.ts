@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllUsers, type AllUsersSortBy, type SortDir } from "@/lib/db/allUsers";
+import { getAllUsersForExport, type AllUsersSortBy, type SortDir } from "@/lib/db/allUsers";
 import { toCsv } from "@/lib/db/explorer";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 import { getClientIp } from "@/lib/security/clientIp";
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   const sortBy = sortByParam && ALLOWED_SORT.includes(sortByParam) ? sortByParam : "last_active";
   const sortDir: SortDir = params.get("sortDir") === "asc" ? "asc" : "desc";
 
-  const { users } = await getAllUsers(
+  const users = await getAllUsersForExport(
     {
       search: params.get("search") || undefined,
       signedUpFrom: params.get("signedUpFrom") || undefined,
@@ -35,7 +35,6 @@ export async function GET(request: NextRequest) {
       sortBy,
       sortDir,
     },
-    1,
     ROW_CAP
   );
 

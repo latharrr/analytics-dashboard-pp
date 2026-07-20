@@ -7,6 +7,9 @@ import { getClientIp } from "@/lib/security/clientIp";
 const ALLOWED_DAYS = [1, 7, 15, 30];
 const CSV_ROW_CAP = 5_000;
 
+// Paged past PostgREST's 1000-row cap; a wide window can be tens of thousands of rows.
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   // Contains phone numbers, so this uses the stricter PII limit (matches PG/Flat Leads, Verified Users).
   const allowed = await checkRateLimit(getClientIp(request), {

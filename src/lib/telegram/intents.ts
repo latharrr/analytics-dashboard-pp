@@ -458,7 +458,7 @@ const METRIC_LABELS: Record<Metric, string> = {
   ask_around: "how many users have created or joined an Ask Around pool/post, all-time",
   ask_around_new_users: "of users who signed up recently (new users), how many created an Ask Around pool/post — a day-count cohort conversion, e.g. 'ask around by new users last 15 days'",
   new_user_activity: "what activity new users (recent signups) have done — chat, joining/creating a pool, PG search, flat/flatmate listing, trust actions — broken down by type, over a period of days, e.g. 'what have new users done in the last 15 days'",
-  new_user_locations: "new users (recent signups) broken down by nearest college/location, e.g. 'where are new users signing up from', 'new user locations last 7 days' — aggregate counts only here, no names or phone numbers",
+  new_user_locations: "new users (recent signups) broken down by city/state (reverse-geocoded from their signup location), e.g. 'where are new users signing up from', 'new user locations last 7 days' — aggregate counts only here, no names or phone numbers",
   pg_flat_leads: "PG search / Flat listing / Flatmate listing leads count, last 30 days (aggregate counts only — no names or phone numbers here)",
   growth: "Growth dashboard: signups, verification rates, referrals, where new users come from",
   pools: "Pools dashboard: pool creation, participation, completion rates, pool sizes",

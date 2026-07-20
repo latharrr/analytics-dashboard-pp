@@ -3,6 +3,9 @@ import { getNewUserLocations, getNewUserLocationsSummary } from "@/lib/db/newUse
 
 const ALLOWED_DAYS = [1, 7, 15, 30];
 
+// Summary/detail are paged past PostgREST's 1000-row cap and may geocode; allow more time.
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   const daysParam = Number(request.nextUrl.searchParams.get("days"));
   const days = ALLOWED_DAYS.includes(daysParam) ? daysParam : 7;

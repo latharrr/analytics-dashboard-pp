@@ -7,6 +7,9 @@ import { getClientIp } from "@/lib/security/clientIp";
 const ALLOWED_DAYS = [1, 7, 15, 30];
 const CSV_ROW_CAP = 5_000;
 
+// Paged past PostgREST's 1000-row cap and may geocode uncached coordinates.
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   // Stricter than the Explorer's CSV limiter: this export contains names and phone numbers.
   const allowed = await checkRateLimit(getClientIp(request), {

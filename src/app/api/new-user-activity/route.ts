@@ -3,6 +3,10 @@ import { getNewUserActivitySummary, getNewUserActivityDetail } from "@/lib/db/ne
 
 const ALLOWED_DAYS = [1, 7, 15, 30];
 
+// Detail is paged past PostgREST's 1000-row cap (can be tens of thousands of
+// events), so allow more time than the default.
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   const daysParam = Number(request.nextUrl.searchParams.get("days"));
   const days = ALLOWED_DAYS.includes(daysParam) ? daysParam : 7;

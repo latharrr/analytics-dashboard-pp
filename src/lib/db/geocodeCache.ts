@@ -39,6 +39,35 @@ interface CacheRow {
   state: string | null;
 }
 
+const CACHE_PAGE_SIZE = 1000;
+
+/**
+ * Reads the entire analytics_geocode_cache table, paginating past this
+ * project's REST "Max rows = 1000" default. A bare `.select()` silently caps
+ * at 1000 rows, which would make every coordinate whose cache row sits beyond
+ * the first 1000 look like a cache miss — showing "Unknown location" for real
+ * places and re-calling the geocoding API for already-resolved coordinates.
+ */
+async function readAllCacheRows(
+  supabase: ReturnType<typeof getServiceClient>
+): Promise<CacheRow[]> {
+  const rows: CacheRow[] = [];
+  for (let from = 0; ; from += CACHE_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("analytics_geocode_cache")
+      .select("lat, lng, city, state")
+      .range(from, from + CACHE_PAGE_SIZE - 1);
+    if (error) {
+      console.error("resolveLocationLabels: cache read failed:", error.message);
+      break;
+    }
+    const page = (data ?? []) as CacheRow[];
+    rows.push(...page);
+    if (page.length < CACHE_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 /**
  * Resolves a batch of (lat, lng) points to "City, State" labels, backed by
  * analytics_geocode_cache (migration 028). Cache misses call LocationIQ's
@@ -59,10 +88,9 @@ export async function resolveLocationLabels(
   if (uniquePoints.size === 0) return result;
 
   const supabase = getServiceClient();
-  const { data: cached, error } = await supabase.from("analytics_geocode_cache").select("lat, lng, city, state");
-  if (error) console.error("resolveLocationLabels: cache read failed:", error.message);
+  const cached = await readAllCacheRows(supabase);
 
-  for (const row of (cached ?? []) as CacheRow[]) {
+  for (const row of cached) {
     const key = cacheKey(Number(row.lat), Number(row.lng));
     if (uniquePoints.has(key)) {
       result.set(key, formatLabel(row.city, row.state));
