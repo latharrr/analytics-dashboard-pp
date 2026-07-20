@@ -54,7 +54,11 @@ export async function getVerifiedUsers(
     college_search: filters.college ?? null,
     row_limit: rowLimit,
   });
-  if (error || !data) return { users: [], totalCount: 0 };
+  if (error) {
+    console.error("getVerifiedUsers failed:", error.message);
+    return { users: [], totalCount: 0 };
+  }
+  if (!data) return { users: [], totalCount: 0 };
 
   const rows = data as DetailRow[];
   return {

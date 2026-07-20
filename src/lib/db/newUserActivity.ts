@@ -15,7 +15,11 @@ export interface NewUserActivityEvent {
 export async function getNewUserActivitySummary(daysBack: number): Promise<BarDatum[]> {
   const supabase = getServiceClient();
   const { data, error } = await supabase.rpc("analytics_new_user_activity_summary", { days_back: daysBack });
-  if (error || !data) return [];
+  if (error) {
+    console.error("getNewUserActivitySummary failed:", error.message);
+    return [];
+  }
+  if (!data) return [];
   return (data as { activity: string; user_count: number }[]).map((r) => ({
     label: r.activity,
     value: r.user_count,
@@ -29,7 +33,11 @@ export async function getNewUserActivityDetail(daysBack: number, rowLimit = 500)
     days_back: daysBack,
     row_limit: rowLimit,
   });
-  if (error || !data) return [];
+  if (error) {
+    console.error("getNewUserActivityDetail failed:", error.message);
+    return [];
+  }
+  if (!data) return [];
   return (
     data as {
       user_id: string;

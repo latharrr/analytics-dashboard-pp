@@ -32,7 +32,11 @@ export async function getPgFlatLeads(
     date_to: dateTo ?? null,
     row_limit: rowLimit,
   });
-  if (error || !data) return { leads: [], totalCount: 0 };
+  if (error) {
+    console.error("getPgFlatLeads failed:", error.message);
+    return { leads: [], totalCount: 0 };
+  }
+  if (!data) return { leads: [], totalCount: 0 };
   const rows = data as {
     user_id: string;
     user_name: string | null;
@@ -59,7 +63,11 @@ export async function getPgFlatLeads(
 export async function getPgFlatLeadsSummary(daysBack: number): Promise<BarDatum[]> {
   const supabase = getServiceClient();
   const { data, error } = await supabase.rpc("analytics_pg_flat_leads_summary", { days_back: daysBack });
-  if (error || !data) return [];
+  if (error) {
+    console.error("getPgFlatLeadsSummary failed:", error.message);
+    return [];
+  }
+  if (!data) return [];
   return (data as { activity_type: string; lead_count: number }[]).map((r) => ({
     label: r.activity_type,
     value: r.lead_count,

@@ -70,7 +70,11 @@ export async function getAllUsers(
     page_number: page,
     page_size: pageSize,
   });
-  if (error || !data) return { users: [], totalCount: 0 };
+  if (error) {
+    console.error("getAllUsers failed:", error.message);
+    return { users: [], totalCount: 0 };
+  }
+  if (!data) return { users: [], totalCount: 0 };
 
   const rows = data as DetailRow[];
   return {
