@@ -7,6 +7,11 @@ import { formatAsOf } from "@/lib/format";
 
 const RANGES = [1, 7, 15, 30] as const;
 
+// Chat overlaps almost entirely with "Joined a pool" — sending a message is how
+// a user joins a pool — so it's not shown as a standalone summary tile. It still
+// counts toward "Did any activity" and still appears in the per-user detail.
+const HIDDEN_SUMMARY_LABELS = new Set(["Sent a chat message"]);
+
 interface ApiEvent {
   userId: string;
   userName: string | null;
@@ -125,11 +130,17 @@ export function NewUserActivityView() {
 
       {data && (
         <>
-          <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {data.summary.map((s) => (
-              <StatTile key={s.label} label={s.label} value={s.value} />
-            ))}
+          <div className="mb-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {data.summary
+              .filter((s) => !HIDDEN_SUMMARY_LABELS.has(s.label))
+              .map((s) => (
+                <StatTile key={s.label} label={s.label} value={s.value} />
+              ))}
           </div>
+          <p className="mb-6 text-[11px] text-ink-muted/70">
+            Chat isn&rsquo;t shown as its own metric: sending a message is how a user joins a pool, so it overlapped
+            almost entirely with &ldquo;Joined a pool.&rdquo; Chat messages still appear per-user in the table below.
+          </p>
 
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-sm">
