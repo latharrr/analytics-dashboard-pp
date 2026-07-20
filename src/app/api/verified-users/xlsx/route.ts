@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getVerifiedUsers, type VerificationFilter } from "@/lib/db/verifiedUsers";
-import { toCsv } from "@/lib/db/explorer";
+import { toXlsxBuffer } from "@/lib/db/explorer";
 import { parseLimitParam } from "@/lib/db/exportParams";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 import { getClientIp } from "@/lib/security/clientIp";
 
-const CSV_ROW_CAP = 5_000;
+const XLSX_ROW_CAP = 5_000;
 const ALLOWED_VERIFICATION: VerificationFilter[] = ["both", "digilocker", "college", "either"];
 
 export async function GET(request: NextRequest) {
-  // Stricter than the Explorer's CSV limiter: this export contains names and phone numbers.
+  // Stricter than the Explorer's XLSX limiter: this export contains names and phone numbers.
   const allowed = await checkRateLimit(getClientIp(request), {
-    route: "verified-users-csv",
+    route: "verified-users-xlsx",
     windowSeconds: 60,
     maxRequests: 5,
   });
@@ -31,9 +31,9 @@ export async function GET(request: NextRequest) {
 
   const { users } = await getVerifiedUsers(
     { dateFrom, dateTo, search, college, verificationFilter },
-    parseLimitParam(request, CSV_ROW_CAP)
+    parseLimitParam(request, XLSX_ROW_CAP)
   );
-  const csv = toCsv(
+  const buffer = toXlsxBuffer(
     users.map((u) => ({
       name: u.userName,
       phone: u.phone,
@@ -44,13 +44,14 @@ export async function GET(request: NextRequest) {
       digilocker_verified_at: u.digilockerVerifiedAt,
       college_verified_at: u.collegeVerifiedAt,
       user_id: u.userId,
-    }))
+    })),
+    "verified-users"
   );
 
-  return new NextResponse(csv, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="verified-users.csv"`,
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="verified-users.xlsx"`,
     },
   });
 }

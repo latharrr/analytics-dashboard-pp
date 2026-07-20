@@ -4,6 +4,9 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { formatAsOf, formatRelativeTime } from "@/lib/format";
 import { Spinner } from "@/components/Spinner";
 import { StatTile } from "@/components/kpi/StatTile";
+import { ExportButton } from "@/components/ExportButton";
+
+const EXPORT_ROW_CAP = 5_000;
 
 interface ApiLead {
   userId: string;
@@ -182,12 +185,14 @@ export function PgFlatEngagementView() {
             Clear
           </button>
         )}
-        <a
-          href={`/api/pg-flat-leads/csv?${exportParams.toString()}`}
-          className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-        >
-          Export CSV
-        </a>
+        <ExportButton
+          label="PG / Flat engagement"
+          csvHref="/api/pg-flat-leads/csv"
+          xlsxHref="/api/pg-flat-leads/xlsx"
+          params={exportParams.toString()}
+          maxRows={EXPORT_ROW_CAP}
+          className="ml-auto"
+        />
       </div>
 
       {stats && (
@@ -286,7 +291,7 @@ export function PgFlatEngagementView() {
         Showing {userGroups.length.toLocaleString()} users ({(data?.leads.length ?? 0).toLocaleString()} actions,
         capped at 1,000). No page-visit or time-spent tracking exists anywhere in this data — &ldquo;actions&rdquo;
         are real PG searches submitted, Flat listings created, and Flatmate listings created (same source as PG /
-        Flat Leads). CSV export reflects the date filter only, not the name/phone search.
+        Flat Leads). Export reflects the date filter only, not the name/phone search.
       </p>
     </div>
   );

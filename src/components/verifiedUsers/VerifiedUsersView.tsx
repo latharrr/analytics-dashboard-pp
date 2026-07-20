@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatAsOf, formatRelativeTime } from "@/lib/format";
 import { Spinner } from "@/components/Spinner";
+import { ExportButton } from "@/components/ExportButton";
+
+const EXPORT_ROW_CAP = 5_000;
 
 interface ApiUser {
   userId: string;
@@ -21,7 +24,23 @@ interface ApiResponse {
   totalCount: number;
 }
 
-type SortColumn = "userName" | "collegeName" | "trustScore" | "signedUpAt" | "lastActivity";
+type SortColumn =
+  | "userName"
+  | "collegeName"
+  | "trustScore"
+  | "signedUpAt"
+  | "lastActivity"
+  | "digilockerVerifiedAt"
+  | "collegeVerifiedAt";
+
+type VerificationFilter = "both" | "digilocker" | "college" | "either";
+
+const VERIFICATION_OPTIONS: { value: VerificationFilter; label: string }[] = [
+  { value: "both", label: "Both Digilocker + College" },
+  { value: "either", label: "Either method" },
+  { value: "digilocker", label: "Digilocker verified" },
+  { value: "college", label: "College verified" },
+];
 
 const COLUMNS: { key: SortColumn; label: string }[] = [
   { key: "userName", label: "Name" },
@@ -29,6 +48,8 @@ const COLUMNS: { key: SortColumn; label: string }[] = [
   { key: "trustScore", label: "Trust Score" },
   { key: "signedUpAt", label: "Signed up" },
   { key: "lastActivity", label: "Last active" },
+  { key: "digilockerVerifiedAt", label: "Digilocker" },
+  { key: "collegeVerifiedAt", label: "College ID" },
 ];
 
 export function VerifiedUsersView() {
@@ -36,6 +57,7 @@ export function VerifiedUsersView() {
   const [college, setCollege] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [verificationFilter, setVerificationFilter] = useState<VerificationFilter>("both");
   const [sortColumn, setSortColumn] = useState<SortColumn>("signedUpAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [data, setData] = useState<ApiResponse | null>(null);
@@ -50,6 +72,7 @@ export function VerifiedUsersView() {
     if (college.trim()) params.set("college", college.trim());
     if (dateFrom) params.set("from", new Date(dateFrom).toISOString());
     if (dateTo) params.set("to", new Date(dateTo).toISOString());
+    params.set("verification", verificationFilter);
 
     const timeout = setTimeout(() => {
       fetch(`/api/verified-users?${params.toString()}`, { signal: controller.signal })
@@ -65,7 +88,7 @@ export function VerifiedUsersView() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [search, college, dateFrom, dateTo]);
+  }, [search, college, dateFrom, dateTo, verificationFilter]);
 
   const exportParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -73,8 +96,9 @@ export function VerifiedUsersView() {
     if (college.trim()) params.set("college", college.trim());
     if (dateFrom) params.set("from", new Date(dateFrom).toISOString());
     if (dateTo) params.set("to", new Date(dateTo).toISOString());
+    params.set("verification", verificationFilter);
     return params.toString();
-  }, [search, college, dateFrom, dateTo]);
+  }, [search, college, dateFrom, dateTo, verificationFilter]);
 
   const sortedUsers = useMemo(() => {
     if (!data) return [];
@@ -103,7 +127,18 @@ export function VerifiedUsersView() {
     }
   }
 
-  const hasFilters = search || college || dateFrom || dateTo;
+  const hasFilters = search || college || dateFrom || dateTo || verificationFilter !== "both";
+
+  function badge(verifiedAt: string | null) {
+    return verifiedAt ? (
+      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+        <span aria-hidden>✓</span>
+        <span title={formatAsOf(verifiedAt)}>{formatRelativeTime(verifiedAt)}</span>
+      </span>
+    ) : (
+      <span className="text-ink-muted">—</span>
+    );
+  }
 
   return (
     <div>
@@ -146,6 +181,20 @@ export function VerifiedUsersView() {
             className="rounded-lg border border-border bg-surface px-2 py-1 text-sm text-ink"
           />
         </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-ink-muted">Verified via</label>
+          <select
+            value={verificationFilter}
+            onChange={(e) => setVerificationFilter(e.target.value as VerificationFilter)}
+            className="rounded-lg border border-border bg-surface px-2 py-1 text-sm text-ink"
+          >
+            {VERIFICATION_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
         {hasFilters && (
           <button
             onClick={() => {
@@ -153,6 +202,7 @@ export function VerifiedUsersView() {
               setCollege("");
               setDateFrom("");
               setDateTo("");
+              setVerificationFilter("both");
             }}
             className="rounded-lg border border-border px-2 py-1.5 text-xs text-ink-muted hover:bg-surface"
           >
@@ -162,12 +212,14 @@ export function VerifiedUsersView() {
         {data && (
           <span className="text-sm text-ink-muted">{data.totalCount.toLocaleString()} verified users</span>
         )}
-        <a
-          href={`/api/verified-users/csv?${exportParams}`}
-          className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-        >
-          Export CSV
-        </a>
+        <ExportButton
+          label="verified users"
+          csvHref="/api/verified-users/csv"
+          xlsxHref="/api/verified-users/xlsx"
+          params={exportParams}
+          maxRows={EXPORT_ROW_CAP}
+          className="ml-auto"
+        />
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border">
@@ -208,6 +260,8 @@ export function VerifiedUsersView() {
                     {formatRelativeTime(u.signedUpAt)}
                   </td>
                   <td className="whitespace-nowrap p-2 text-ink">{formatRelativeTime(u.lastActivity)}</td>
+                  <td className="whitespace-nowrap p-2 text-sm">{badge(u.digilockerVerifiedAt)}</td>
+                  <td className="whitespace-nowrap p-2 text-sm">{badge(u.collegeVerifiedAt)}</td>
                   <td className="whitespace-nowrap p-2 text-ink">{u.phone ?? "—"}</td>
                 </tr>
               ))}
@@ -222,8 +276,8 @@ export function VerifiedUsersView() {
         </table>
       </div>
       <p className="mt-2 text-[11px] text-ink-muted/70">
-        Showing up to {sortedUsers.length.toLocaleString()} users on-page; CSV export includes up to 5,000 matching
-        the current filters.
+        Showing up to {sortedUsers.length.toLocaleString()} users on-page; CSV/Excel export includes up to{" "}
+        {EXPORT_ROW_CAP.toLocaleString()} matching the current filters (pick the row count in the Export panel).
       </p>
     </div>
   );

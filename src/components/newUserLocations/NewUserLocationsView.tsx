@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChartCard, type BarDatum } from "@/components/kpi/BarChartCard";
 import { Spinner } from "@/components/Spinner";
+import { ExportButton } from "@/components/ExportButton";
 import { formatAsOf } from "@/lib/format";
 
 // Kept in sync with NO_LOCATION_LABEL / UNRESOLVED_LOCATION_LABEL in
@@ -11,6 +12,7 @@ const NO_LOCATION_LABEL = "No location captured";
 const UNRESOLVED_LOCATION_LABEL = "Unknown location";
 
 const RANGES = [1, 7, 15, 30] as const;
+const EXPORT_ROW_CAP = 5_000;
 
 interface ApiUser {
   userId: string;
@@ -29,8 +31,18 @@ interface ApiResponse {
   totalCount: number;
 }
 
+type SortColumn = "userName" | "locationLabel" | "signedUpAt";
+
+const COLUMNS: { key: SortColumn; label: string }[] = [
+  { key: "userName", label: "Name" },
+  { key: "locationLabel", label: "Location" },
+  { key: "signedUpAt", label: "Signed up" },
+];
+
 export function NewUserLocationsView() {
   const [days, setDays] = useState<(typeof RANGES)[number]>(7);
+  const [sortColumn, setSortColumn] = useState<SortColumn>("signedUpAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -55,6 +67,30 @@ export function NewUserLocationsView() {
     return { shown, noLocation, unresolved, resolved: shown - noLocation - unresolved };
   }, [data]);
 
+  const sortedUsers = useMemo(() => {
+    if (!data) return [];
+    const rows = [...data.users];
+    rows.sort((a, b) => {
+      const av = a[sortColumn];
+      const bv = b[sortColumn];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = String(av).localeCompare(String(bv));
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return rows;
+  }, [data, sortColumn, sortDir]);
+
+  function toggleSort(column: SortColumn) {
+    if (sortColumn === column) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(column);
+      setSortDir(column === "signedUpAt" ? "desc" : "asc");
+    }
+  }
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -72,12 +108,14 @@ export function NewUserLocationsView() {
           </button>
         ))}
         {data && <span className="ml-2 text-sm text-ink-muted">{data.totalCount.toLocaleString()} new users</span>}
-        <a
-          href={`/api/new-user-locations/csv?days=${days}`}
-          className="ml-auto rounded-lg border border-border px-3 py-1.5 text-sm text-ink hover:bg-surface-raised"
-        >
-          Export CSV
-        </a>
+        <ExportButton
+          label="new user locations"
+          csvHref="/api/new-user-locations/csv"
+          xlsxHref="/api/new-user-locations/xlsx"
+          params={`days=${days}`}
+          maxRows={EXPORT_ROW_CAP}
+          className="ml-auto"
+        />
       </div>
 
       {data && (
@@ -116,24 +154,32 @@ export function NewUserLocationsView() {
             <table className="w-full text-sm">
               <thead className="bg-surface-raised">
                 <tr>
-                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Name</th>
+                  {COLUMNS.map((col) => (
+                    <th
+                      key={col.key}
+                      className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink"
+                    >
+                      <button onClick={() => toggleSort(col.key)} className="flex items-center gap-1">
+                        {col.label}
+                        {sortColumn === col.key && <span>{sortDir === "asc" ? "↑" : "↓"}</span>}
+                      </button>
+                    </th>
+                  ))}
                   <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Phone</th>
-                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Location</th>
-                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Signed up</th>
                 </tr>
               </thead>
               <tbody>
-                {data.users.map((u) => (
+                {sortedUsers.map((u) => (
                   <tr key={u.userId} className="border-b border-border last:border-0">
                     <td className="whitespace-nowrap p-2 text-ink">{u.userName ?? "—"}</td>
-                    <td className="whitespace-nowrap p-2 text-ink">{u.phone ?? "—"}</td>
                     <td className="whitespace-nowrap p-2 text-ink">{u.locationLabel}</td>
                     <td className="whitespace-nowrap p-2 text-ink">{formatAsOf(u.signedUpAt)}</td>
+                    <td className="whitespace-nowrap p-2 text-ink">{u.phone ?? "—"}</td>
                   </tr>
                 ))}
-                {data.users.length === 0 && (
+                {sortedUsers.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="p-4 text-center text-ink-muted">
+                    <td colSpan={COLUMNS.length + 1} className="p-4 text-center text-ink-muted">
                       No new users in this window.
                     </td>
                   </tr>
@@ -142,8 +188,8 @@ export function NewUserLocationsView() {
             </table>
           </div>
           <p className="mt-2 text-[11px] text-ink-muted/70">
-            Showing the {data.users.length.toLocaleString()} most recent signups (capped at 500 on-page; CSV export
-            includes up to 5,000).
+            Showing the {data.users.length.toLocaleString()} most recent signups (capped at 500 on-page; export
+            includes up to {EXPORT_ROW_CAP.toLocaleString()}). Click a column to sort.
           </p>
         </>
       )}
