@@ -6,7 +6,7 @@ export default function NewUserActivityPage() {
     <div>
       <KpiPageHeader
         title="New User Activity"
-        description="Users who signed up in the selected window, what they did (chat, joined a pool, created a pool, trust action), and when. Live, bot accounts excluded."
+        description="Users who signed up in the selected window, what they did (chat, joined/created a pool, PG search, flat/flatmate listing, trust action), and when, with phone numbers for follow-up. Live, bot accounts excluded."
       />
       <NewUserActivityView />
     </div>

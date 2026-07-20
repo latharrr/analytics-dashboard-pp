@@ -4,6 +4,7 @@ import type { BarDatum } from "@/components/kpi/BarChartCard";
 export interface NewUserActivityEvent {
   userId: string;
   userName: string | null;
+  phone: string | null;
   signedUpAt: string;
   activityType: string;
   occurredAt: string;
@@ -21,7 +22,7 @@ export async function getNewUserActivitySummary(daysBack: number): Promise<BarDa
   }));
 }
 
-/** One row per (user, activity, timestamp) event, most recent first. Backed by analytics_new_user_activity_detail() (migration 024). */
+/** One row per (user, activity, timestamp) event, most recent first. Backed by analytics_new_user_activity_detail() (migration 030). */
 export async function getNewUserActivityDetail(daysBack: number, rowLimit = 500): Promise<NewUserActivityEvent[]> {
   const supabase = getServiceClient();
   const { data, error } = await supabase.rpc("analytics_new_user_activity_detail", {
@@ -33,6 +34,7 @@ export async function getNewUserActivityDetail(daysBack: number, rowLimit = 500)
     data as {
       user_id: string;
       user_name: string | null;
+      phone: string | null;
       signed_up_at: string;
       activity_type: string;
       occurred_at: string;
@@ -41,6 +43,7 @@ export async function getNewUserActivityDetail(daysBack: number, rowLimit = 500)
   ).map((r) => ({
     userId: r.user_id,
     userName: r.user_name,
+    phone: r.phone,
     signedUpAt: r.signed_up_at,
     activityType: r.activity_type,
     occurredAt: r.occurred_at,

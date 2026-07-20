@@ -10,6 +10,7 @@ const RANGES = [1, 7, 15, 30] as const;
 interface ApiEvent {
   userId: string;
   userName: string | null;
+  phone: string | null;
   signedUpAt: string;
   activityType: string;
   occurredAt: string;
@@ -27,6 +28,7 @@ interface ApiResponse {
 interface UserGroup {
   userId: string;
   userName: string | null;
+  phone: string | null;
   signedUpAt: string;
   lastActivityAt: string;
   events: ApiEvent[];
@@ -60,7 +62,14 @@ export function NewUserActivityView() {
     for (const e of data.detail) {
       let group = byUser.get(e.userId);
       if (!group) {
-        group = { userId: e.userId, userName: e.userName, signedUpAt: e.signedUpAt, lastActivityAt: e.occurredAt, events: [] };
+        group = {
+          userId: e.userId,
+          userName: e.userName,
+          phone: e.phone,
+          signedUpAt: e.signedUpAt,
+          lastActivityAt: e.occurredAt,
+          events: [],
+        };
         byUser.set(e.userId, group);
       }
       group.events.push(e);
@@ -128,6 +137,7 @@ export function NewUserActivityView() {
                 <tr>
                   <th className="w-8 border-b border-border p-2" />
                   <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">User</th>
+                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Phone</th>
                   <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Signed up</th>
                   <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">
                     Activities
@@ -140,7 +150,7 @@ export function NewUserActivityView() {
               <tbody>
                 {loading && (
                   <tr>
-                    <td colSpan={5} className="p-4 text-center text-ink-muted">
+                    <td colSpan={6} className="p-4 text-center text-ink-muted">
                       <span className="inline-flex items-center gap-2">
                         <Spinner className="h-4 w-4" /> Loading…
                       </span>
@@ -158,13 +168,14 @@ export function NewUserActivityView() {
                         >
                           <td className="p-2 text-center text-ink-muted">{isOpen ? "▾" : "▸"}</td>
                           <td className="whitespace-nowrap p-2 font-medium text-ink">{g.userName ?? g.userId}</td>
+                          <td className="whitespace-nowrap p-2 text-ink">{g.phone ?? "—"}</td>
                           <td className="whitespace-nowrap p-2 text-ink">{formatAsOf(g.signedUpAt)}</td>
                           <td className="whitespace-nowrap p-2 text-ink">{g.events.length}</td>
                           <td className="whitespace-nowrap p-2 text-ink">{formatAsOf(g.lastActivityAt)}</td>
                         </tr>
                         {isOpen && (
                           <tr className="border-b border-border">
-                            <td colSpan={5} className="bg-surface p-0">
+                            <td colSpan={6} className="bg-surface p-0">
                               <table className="w-full text-sm">
                                 <thead>
                                   <tr>
@@ -193,7 +204,7 @@ export function NewUserActivityView() {
                   })}
                 {!loading && userGroups.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-4 text-center text-ink-muted">
+                    <td colSpan={6} className="p-4 text-center text-ink-muted">
                       No activity in this window.
                     </td>
                   </tr>

@@ -8,10 +8,11 @@ const ALLOWED_DAYS = [1, 7, 15, 30];
 const CSV_ROW_CAP = 5_000;
 
 export async function GET(request: NextRequest) {
+  // Contains phone numbers, so this uses the stricter PII limit (matches PG/Flat Leads, Verified Users).
   const allowed = await checkRateLimit(getClientIp(request), {
     route: "new-user-activity-csv",
     windowSeconds: 60,
-    maxRequests: 10,
+    maxRequests: 5,
   });
   if (!allowed) {
     return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
     detail.map((e) => ({
       user_id: e.userId,
       user_name: e.userName,
+      phone: e.phone,
       signed_up_at: e.signedUpAt,
       activity_type: e.activityType,
       occurred_at: e.occurredAt,
