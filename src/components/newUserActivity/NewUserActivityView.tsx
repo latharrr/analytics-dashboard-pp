@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { StatTile } from "@/components/kpi/StatTile";
 import { Spinner } from "@/components/Spinner";
 import { formatAsOf } from "@/lib/format";
@@ -10,6 +10,7 @@ const RANGES = [1, 7, 15, 30] as const;
 interface ApiEvent {
   userId: string;
   userName: string | null;
+  phone: string | null;
   signedUpAt: string;
   activityType: string;
   occurredAt: string;
@@ -24,23 +25,67 @@ interface ApiResponse {
   detail: ApiEvent[];
 }
 
+interface UserGroup {
+  userId: string;
+  userName: string | null;
+  phone: string | null;
+  signedUpAt: string;
+  lastActivityAt: string;
+  events: ApiEvent[];
+}
+
 export function NewUserActivityView() {
   const [days, setDays] = useState<(typeof RANGES)[number]>(7);
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     fetch(`/api/new-user-activity?days=${days}`, { signal: controller.signal })
       .then((res) => res.json())
-      .then((json: ApiResponse) => setData(json))
+      .then((json: ApiResponse) => {
+        setData(json);
+        setExpanded(new Set());
+      })
       .catch((err) => {
         if (err.name !== "AbortError") console.error(err);
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
   }, [days]);
+
+  const userGroups = useMemo<UserGroup[]>(() => {
+    if (!data) return [];
+    const byUser = new Map<string, UserGroup>();
+    for (const e of data.detail) {
+      let group = byUser.get(e.userId);
+      if (!group) {
+        group = {
+          userId: e.userId,
+          userName: e.userName,
+          phone: e.phone,
+          signedUpAt: e.signedUpAt,
+          lastActivityAt: e.occurredAt,
+          events: [],
+        };
+        byUser.set(e.userId, group);
+      }
+      group.events.push(e);
+      if (e.occurredAt > group.lastActivityAt) group.lastActivityAt = e.occurredAt;
+    }
+    return Array.from(byUser.values()).sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1));
+  }, [data]);
+
+  function toggleUser(userId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
 
   return (
     <div>
@@ -90,26 +135,76 @@ export function NewUserActivityView() {
             <table className="w-full text-sm">
               <thead className="bg-surface-raised">
                 <tr>
+                  <th className="w-8 border-b border-border p-2" />
                   <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">User</th>
+                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Phone</th>
                   <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Signed up</th>
-                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Activity</th>
-                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">When</th>
-                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">Detail</th>
+                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">
+                    Activities
+                  </th>
+                  <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">
+                    Last activity
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {data.detail.map((e, i) => (
-                  <tr key={`${e.userId}-${e.occurredAt}-${i}`} className="border-b border-border last:border-0">
-                    <td className="whitespace-nowrap p-2 text-ink">{e.userName ?? e.userId}</td>
-                    <td className="whitespace-nowrap p-2 text-ink">{formatAsOf(e.signedUpAt)}</td>
-                    <td className="whitespace-nowrap p-2 text-ink">{e.activityType}</td>
-                    <td className="whitespace-nowrap p-2 text-ink">{formatAsOf(e.occurredAt)}</td>
-                    <td className="whitespace-nowrap p-2 text-ink">{e.detail ?? "—"}</td>
-                  </tr>
-                ))}
-                {data.detail.length === 0 && (
+                {loading && (
                   <tr>
-                    <td colSpan={5} className="p-4 text-center text-ink-muted">
+                    <td colSpan={6} className="p-4 text-center text-ink-muted">
+                      <span className="inline-flex items-center gap-2">
+                        <Spinner className="h-4 w-4" /> Loading…
+                      </span>
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  userGroups.map((g) => {
+                    const isOpen = expanded.has(g.userId);
+                    return (
+                      <Fragment key={g.userId}>
+                        <tr
+                          onClick={() => toggleUser(g.userId)}
+                          className="cursor-pointer border-b border-border hover:bg-surface-raised"
+                        >
+                          <td className="p-2 text-center text-ink-muted">{isOpen ? "▾" : "▸"}</td>
+                          <td className="whitespace-nowrap p-2 font-medium text-ink">{g.userName ?? g.userId}</td>
+                          <td className="whitespace-nowrap p-2 text-ink">{g.phone ?? "—"}</td>
+                          <td className="whitespace-nowrap p-2 text-ink">{formatAsOf(g.signedUpAt)}</td>
+                          <td className="whitespace-nowrap p-2 text-ink">{g.events.length}</td>
+                          <td className="whitespace-nowrap p-2 text-ink">{formatAsOf(g.lastActivityAt)}</td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="border-b border-border">
+                            <td colSpan={6} className="bg-surface p-0">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr>
+                                    <th className="whitespace-nowrap p-2 pl-10 text-left font-medium text-ink-muted">
+                                      Activity
+                                    </th>
+                                    <th className="whitespace-nowrap p-2 text-left font-medium text-ink-muted">When</th>
+                                    <th className="whitespace-nowrap p-2 text-left font-medium text-ink-muted">Detail</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {g.events.map((e, i) => (
+                                    <tr key={i} className="border-t border-border/60">
+                                      <td className="whitespace-nowrap p-2 pl-10 text-ink">{e.activityType}</td>
+                                      <td className="whitespace-nowrap p-2 text-ink">{formatAsOf(e.occurredAt)}</td>
+                                      <td className="p-2 text-ink">{e.detail ?? "—"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                {!loading && userGroups.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-4 text-center text-ink-muted">
                       No activity in this window.
                     </td>
                   </tr>
@@ -118,8 +213,8 @@ export function NewUserActivityView() {
             </table>
           </div>
           <p className="mt-2 text-[11px] text-ink-muted/70">
-            Showing the {data.detail.length.toLocaleString()} most recent events (capped at 500 on-page; CSV export
-            includes up to 5,000).
+            Showing {userGroups.length.toLocaleString()} users ({data.detail.length.toLocaleString()} events, capped
+            at 500 events on-page; CSV export includes up to 5,000). Click a user to see their activity.
           </p>
         </>
       )}
