@@ -46,6 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/explorer", label: "Data Explorer" },
       { href: "/schema", label: "Schema Browser" },
       { href: "/pg-flat-leads", label: "PG / Flat Leads" },
+      { href: "/pg-flat-engagement", label: "PG / Flat / Flatmate by User" },
       { href: "/verified-users", label: "Verified Users" },
     ],
   },
