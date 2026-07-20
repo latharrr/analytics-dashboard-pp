@@ -6,7 +6,7 @@ export default function NewUserLocationsPage() {
     <div>
       <KpiPageHeader
         title="New User Locations"
-        description="Users who signed up in the selected window, mapped to their nearest college (within 5km) with contact info for follow-up. Users with no location on file or no college nearby show as 'Unknown / no college nearby'. Bot accounts excluded."
+        description="Users who signed up in the selected window, reverse-geocoded from the GPS coordinate they shared into a 'City, State', with contact info for follow-up. Location comes only from users who shared one — those who didn't show as 'No location captured' (a data-collection gap in the app, not a lookup failure); rows with a coordinate we haven't resolved yet show as 'Unknown location'. Bot accounts excluded."
       />
       <NewUserLocationsView />
     </div>

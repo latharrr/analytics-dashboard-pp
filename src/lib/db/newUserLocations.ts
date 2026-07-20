@@ -50,9 +50,22 @@ async function fetchDetailRows(daysBack: number, rowLimit: number): Promise<Deta
   return rows;
 }
 
+// Exported so the view/summary can single out these two "no city" buckets.
+export const NO_LOCATION_LABEL = "No location captured";
+export const UNRESOLVED_LOCATION_LABEL = "Unknown location";
+
+/**
+ * Two distinct "no city" cases, deliberately labelled differently:
+ *  - NO_LOCATION_LABEL: the app never recorded a coordinate for this user
+ *    (users.location IS NULL). Nothing to geocode — a data-collection gap,
+ *    not a lookup failure. This is the majority of blanks.
+ *  - UNRESOLVED_LOCATION_LABEL: a coordinate exists but hasn't been
+ *    reverse-geocoded to a city yet (cold cache, or the geocoder returned
+ *    nothing). Resolves on a later load as the coordinate cache warms.
+ */
 function labelFor(row: DetailRow, labels: Map<string, string | null>): string {
-  if (row.lat == null || row.lng == null) return "Unknown location (no location on file)";
-  return labels.get(locationCacheKey(row.lat, row.lng)) ?? "Unknown location";
+  if (row.lat == null || row.lng == null) return NO_LOCATION_LABEL;
+  return labels.get(locationCacheKey(row.lat, row.lng)) ?? UNRESOLVED_LOCATION_LABEL;
 }
 
 /**

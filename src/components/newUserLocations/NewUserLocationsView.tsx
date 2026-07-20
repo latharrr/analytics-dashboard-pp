@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChartCard, type BarDatum } from "@/components/kpi/BarChartCard";
 import { Spinner } from "@/components/Spinner";
 import { formatAsOf } from "@/lib/format";
+
+// Kept in sync with NO_LOCATION_LABEL / UNRESOLVED_LOCATION_LABEL in
+// src/lib/db/newUserLocations.ts (can't import that server module into a client component).
+const NO_LOCATION_LABEL = "No location captured";
+const UNRESOLVED_LOCATION_LABEL = "Unknown location";
 
 const RANGES = [1, 7, 15, 30] as const;
 
@@ -42,6 +47,14 @@ export function NewUserLocationsView() {
     return () => controller.abort();
   }, [days]);
 
+  const coverage = useMemo(() => {
+    if (!data) return null;
+    const shown = data.users.length;
+    const noLocation = data.users.filter((u) => u.locationLabel === NO_LOCATION_LABEL).length;
+    const unresolved = data.users.filter((u) => u.locationLabel === UNRESOLVED_LOCATION_LABEL).length;
+    return { shown, noLocation, unresolved, resolved: shown - noLocation - unresolved };
+  }, [data]);
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -70,6 +83,20 @@ export function NewUserLocationsView() {
       {data && (
         <p className="mb-4 text-[11px] text-ink-muted/70">
           Window: {formatAsOf(data.from)} → {formatAsOf(data.to)}
+        </p>
+      )}
+
+      {coverage && coverage.shown > 0 && (
+        <p className="mb-4 text-[11px] text-ink-muted/70">
+          Of the {coverage.shown.toLocaleString()} shown:{" "}
+          <span className="text-ink">{coverage.resolved.toLocaleString()}</span> have a city,{" "}
+          <span className="text-ink">{coverage.noLocation.toLocaleString()}</span> shared no location at signup
+          {coverage.unresolved > 0 && (
+            <>
+              , <span className="text-ink">{coverage.unresolved.toLocaleString()}</span> not resolved yet
+            </>
+          )}
+          . Blank locations are missing source data (the app didn&rsquo;t capture a coordinate), not a lookup error.
         </p>
       )}
 
