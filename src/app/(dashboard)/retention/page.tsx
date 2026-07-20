@@ -15,7 +15,7 @@ export default async function RetentionPage() {
     <div>
       <KpiPageHeader
         title="Retention"
-        description="Weekly signup cohorts vs. the % who took any proxy-activity action (chat, trust, pool) in each following week. No dedicated retention/session-event log exists yet, so this is built from those same activity signals."
+        description="Weekly signup cohorts vs. the % who took any proxy-activity action (chat, trust, pool) in each following week. Cohorts are fixed calendar weeks (Mon–Sun), so a cohort's size here won't match a rolling 'last 7 days' count on other tabs (e.g. New User Activity, Overview). No dedicated retention/session-event log exists yet, so this is built from those same activity signals."
       />
       <p className="mb-4 text-[11px] text-ink-muted/70">As of {formatAsOf(liveAsOf)}</p>
 

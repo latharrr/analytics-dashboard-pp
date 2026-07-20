@@ -20,7 +20,7 @@ export default async function GrowthDashboardPage() {
     <div>
       <KpiPageHeader
         title="Growth"
-        description="Signups, verification, and where new users are coming from."
+        description="Signups, verification, and where new users are coming from. Stat tiles are nightly-refreshed (see the timestamp on each), so a 'new users' figure here can trail the live count on New User Activity by up to a day; the chart below is live."
       />
       <StatTileGrid row={growth} asOf={mvAsOf} />
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">

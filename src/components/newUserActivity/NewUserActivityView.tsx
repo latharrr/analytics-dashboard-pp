@@ -137,6 +137,11 @@ export function NewUserActivityView() {
                 <StatTile key={s.label} label={s.label} value={s.value} />
               ))}
           </div>
+          <p className="mb-1 text-[11px] text-ink-muted/70">
+            &ldquo;New Users (Cohort)&rdquo; is everyone who signed up in this rolling window; the other tiles count
+            distinct users per action, which overlap, so they don&rsquo;t sum to the cohort. The table below lists only
+            the users who did at least one activity.
+          </p>
           <p className="mb-6 text-[11px] text-ink-muted/70">
             Chat isn&rsquo;t shown as its own metric: sending a message is how a user joins a pool, so it overlapped
             almost entirely with &ldquo;Joined a pool.&rdquo; Chat messages still appear per-user in the table below.
@@ -224,9 +229,10 @@ export function NewUserActivityView() {
             </table>
           </div>
           <p className="mt-2 text-[11px] text-ink-muted/70">
-            Showing {userGroups.length.toLocaleString()} users active in this window, most-recently-active first, with
-            all of their activity ({data.detail.length.toLocaleString()} events). Click a user to see it. Newest
-            activity is only as fresh as the last data import (see &ldquo;Last refreshed&rdquo; top-left).
+            Showing the {userGroups.length.toLocaleString()} most-recently-active users in this window (up to 500),
+            with all of their activity ({data.detail.length.toLocaleString()} events) — so on wider windows this can be
+            fewer than the &ldquo;Did any activity&rdquo; count above. Click a user to expand. Newest activity is only
+            as fresh as the last data import (see &ldquo;Last refreshed&rdquo; top-left).
           </p>
         </>
       )}
