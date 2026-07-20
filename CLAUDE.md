@@ -97,13 +97,21 @@ table). This file is the "how to work here" companion.
      return the small result set — not raw rows into JS. This was migration
      037 (top colleges, pool completion).
    - **A detail RPC that returns many rows** is silently clipped to 1000 —
-     e.g. `analytics_new_user_locations_detail` (2,124 signups → showed 1,000)
-     and `analytics_new_user_activity_detail` (30,911 events → showed 1,000).
+     e.g. `analytics_new_user_locations_detail` (2,124 signups → showed 1,000).
      Raising the SQL-side `row_limit` does **not** help; PostgREST clips the
      *response*. **Fix**: page the call with `.range(from, to)` in a loop until
      a short page (see `getAllUsersForExport`, `fetchDetailRows` in
-     newUserLocations, `getNewUserActivityDetail`). Add `export const
-     maxDuration = 30` to routes that now make several paged calls.
+     newUserLocations). Add `export const maxDuration = 30` to routes that now
+     make several paged calls.
+   - **…but don't page an *expensive* per-event function** — PostgREST re-runs
+     the whole function per page. `analytics_new_user_activity_detail` (a
+     7-way UNION) had 30,911 events in 30d; paging it took ~47s (once per
+     1000-event page) and timed out, and a single un-paged call showed only
+     ~13-21 power users (who fill the 1000-event cap) instead of the 320+ who
+     were active. **Fix**: return one row *per user* with events aggregated
+     into a jsonb array (`analytics_new_user_activity_by_user`, migration 038)
+     — ≤user-cap rows, one execution, ~3s, complete. `getNewUserActivityDetail`
+     calls that and flattens it back to the per-event shape.
    - Where you page a whole small table (`analytics_geocode_cache`,
      `analytics_telegram_subscribers`), the same `.range()` loop applies.
 
