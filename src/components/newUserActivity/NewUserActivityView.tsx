@@ -224,8 +224,9 @@ export function NewUserActivityView() {
             </table>
           </div>
           <p className="mt-2 text-[11px] text-ink-muted/70">
-            Showing {userGroups.length.toLocaleString()} users ({data.detail.length.toLocaleString()} events, capped
-            at 500 events on-page; CSV export includes up to 5,000). Click a user to see their activity.
+            Showing {userGroups.length.toLocaleString()} users active in this window, most-recently-active first, with
+            all of their activity ({data.detail.length.toLocaleString()} events). Click a user to see it. Newest
+            activity is only as fresh as the last data import (see &ldquo;Last refreshed&rdquo; top-left).
           </p>
         </>
       )}
