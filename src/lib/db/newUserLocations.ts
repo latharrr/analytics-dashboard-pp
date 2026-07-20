@@ -31,7 +31,11 @@ async function fetchDetailRows(daysBack: number, rowLimit: number): Promise<Deta
     days_back: daysBack,
     row_limit: rowLimit,
   });
-  if (error || !data) return [];
+  if (error) {
+    console.error("getNewUserLocations failed:", error.message);
+    return [];
+  }
+  if (!data) return [];
   return data as DetailRow[];
 }
 
