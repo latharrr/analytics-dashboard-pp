@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAllUsersForExport, type AllUsersSortBy, type SortDir } from "@/lib/db/allUsers";
+import { getAllUsersForExport, type AllUsersSortBy, type SortDir, type ActivityFilter } from "@/lib/db/allUsers";
 import { toXlsxBuffer } from "@/lib/db/explorer";
 import { parseLimitParam } from "@/lib/db/exportParams";
 import { checkRateLimit } from "@/lib/security/rateLimit";
 import { getClientIp } from "@/lib/security/clientIp";
 
 const ROW_CAP = 10_000;
-const ALLOWED_SORT: AllUsersSortBy[] = ["last_active", "signed_up", "name", "trust_score"];
+const ALLOWED_SORT: AllUsersSortBy[] = [
+  "last_active",
+  "signed_up",
+  "name",
+  "trust_score",
+  "activities",
+  "engagement_density",
+  "retention_score",
+];
+const ALLOWED_FILTERS: ActivityFilter[] = ["all", "active", "inactive"];
 
 export const maxDuration = 30;
 
@@ -25,6 +34,9 @@ export async function GET(request: NextRequest) {
   const sortByParam = params.get("sortBy") as AllUsersSortBy | null;
   const sortBy = sortByParam && ALLOWED_SORT.includes(sortByParam) ? sortByParam : "last_active";
   const sortDir: SortDir = params.get("sortDir") === "asc" ? "asc" : "desc";
+  const filterParam = params.get("activityFilter") as ActivityFilter | null;
+  const activityFilter: ActivityFilter =
+    filterParam && ALLOWED_FILTERS.includes(filterParam) ? filterParam : "all";
 
   const users = await getAllUsersForExport(
     {
@@ -33,6 +45,7 @@ export async function GET(request: NextRequest) {
       signedUpTo: params.get("signedUpTo") || undefined,
       lastActiveFrom: params.get("lastActiveFrom") || undefined,
       lastActiveTo: params.get("lastActiveTo") || undefined,
+      activityFilter,
       sortBy,
       sortDir,
     },
@@ -48,6 +61,11 @@ export async function GET(request: NextRequest) {
       trust_score: u.trustScore,
       is_verified: u.isVerified,
       is_banned: u.isBanned,
+      total_activities: u.totalActivities,
+      active_days: u.activeDays,
+      days_since_signup: u.daysSinceSignup,
+      engagement_density: u.engagementDensity,
+      retention_score: u.retentionScore,
       last_activity_type: u.lastActivityType,
       last_activity_detail: u.lastActivityDetail,
       last_activity_at: u.lastActivityOccurredAt,

@@ -23,15 +23,17 @@ interface ApiUser {
 }
 
 interface ApiResponse {
+  allUsers: boolean;
   days: number;
-  from: string;
-  to: string;
+  from: string | null;
+  to: string | null;
   summary: BarDatum[];
   users: ApiUser[];
   totalCount: number;
 }
 
 type SortColumn = "userName" | "locationLabel" | "signedUpAt";
+type Scope = (typeof RANGES)[number] | "all";
 
 const COLUMNS: { key: SortColumn; label: string }[] = [
   { key: "userName", label: "Name" },
@@ -40,16 +42,18 @@ const COLUMNS: { key: SortColumn; label: string }[] = [
 ];
 
 export function NewUserLocationsView() {
-  const [days, setDays] = useState<(typeof RANGES)[number]>(7);
+  const [scope, setScope] = useState<Scope>(7);
   const [sortColumn, setSortColumn] = useState<SortColumn>("signedUpAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const query = scope === "all" ? "scope=all" : `days=${scope}`;
+
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    fetch(`/api/new-user-locations?days=${days}`, { signal: controller.signal })
+    fetch(`/api/new-user-locations?${query}`, { signal: controller.signal })
       .then((res) => res.json())
       .then((json: ApiResponse) => setData(json))
       .catch((err) => {
@@ -57,7 +61,7 @@ export function NewUserLocationsView() {
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [days]);
+  }, [query]);
 
   const coverage = useMemo(() => {
     if (!data) return null;
@@ -97,9 +101,9 @@ export function NewUserLocationsView() {
         {RANGES.map((r) => (
           <button
             key={r}
-            onClick={() => setDays(r)}
+            onClick={() => setScope(r)}
             className={`rounded-lg border px-3 py-1.5 text-sm ${
-              days === r
+              scope === r
                 ? "border-accent bg-accent/10 font-medium text-accent"
                 : "border-border text-ink-muted hover:bg-surface-raised"
             }`}
@@ -107,18 +111,32 @@ export function NewUserLocationsView() {
             Last {r} day{r > 1 ? "s" : ""}
           </button>
         ))}
-        {data && <span className="ml-2 text-sm text-ink-muted">{data.totalCount.toLocaleString()} new users</span>}
+        <button
+          onClick={() => setScope("all")}
+          className={`rounded-lg border px-3 py-1.5 text-sm ${
+            scope === "all"
+              ? "border-accent bg-accent/10 font-medium text-accent"
+              : "border-border text-ink-muted hover:bg-surface-raised"
+          }`}
+        >
+          All users
+        </button>
+        {data && (
+          <span className="ml-2 text-sm text-ink-muted">
+            {data.totalCount.toLocaleString()} {data.allUsers ? "users" : "new users"}
+          </span>
+        )}
         <ExportButton
           label="new user locations"
           csvHref="/api/new-user-locations/csv"
           xlsxHref="/api/new-user-locations/xlsx"
-          params={`days=${days}`}
+          params={query}
           maxRows={EXPORT_ROW_CAP}
           className="ml-auto"
         />
       </div>
 
-      {data && (
+      {data && data.from && data.to && (
         <p className="mb-4 text-[11px] text-ink-muted/70">
           Window: {formatAsOf(data.from)} → {formatAsOf(data.to)}
         </p>

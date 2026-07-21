@@ -22,8 +22,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Too many requests. Try again in a minute." }, { status: 429 });
   }
 
-  const daysParam = Number(request.nextUrl.searchParams.get("days"));
-  const days = ALLOWED_DAYS.includes(daysParam) ? daysParam : 7;
+  const params = request.nextUrl.searchParams;
+  const allUsers = params.get("scope") === "all";
+  const daysParam = Number(params.get("days"));
+  const days = allUsers ? 0 : ALLOWED_DAYS.includes(daysParam) ? daysParam : 7;
 
   const { users } = await getNewUserLocations(days, parseLimitParam(request, CSV_ROW_CAP));
   const csv = toCsv(
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest) {
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="new-user-locations-${days}d.csv"`,
+      "Content-Disposition": `attachment; filename="new-user-locations-${allUsers ? "all" : `${days}d`}.csv"`,
     },
   });
 }

@@ -7,8 +7,11 @@ const ALLOWED_DAYS = [1, 7, 15, 30];
 export const maxDuration = 30;
 
 export async function GET(request: NextRequest) {
-  const daysParam = Number(request.nextUrl.searchParams.get("days"));
-  const days = ALLOWED_DAYS.includes(daysParam) ? daysParam : 7;
+  const params = request.nextUrl.searchParams;
+  const allUsers = params.get("scope") === "all";
+  const daysParam = Number(params.get("days"));
+  // days_back <= 0 means "all users" in analytics_new_user_locations_detail (migration 043).
+  const days = allUsers ? 0 : ALLOWED_DAYS.includes(daysParam) ? daysParam : 7;
 
   const [summary, result] = await Promise.all([
     getNewUserLocationsSummary(days),
@@ -16,12 +19,13 @@ export async function GET(request: NextRequest) {
   ]);
 
   const to = new Date();
-  const from = new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
+  const from = allUsers ? null : new Date(to.getTime() - days * 24 * 60 * 60 * 1000);
 
   return NextResponse.json({
+    allUsers,
     days,
-    from: from.toISOString(),
-    to: to.toISOString(),
+    from: from ? from.toISOString() : null,
+    to: allUsers ? null : to.toISOString(),
     summary,
     users: result.users,
     totalCount: result.totalCount,
