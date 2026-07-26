@@ -38,10 +38,15 @@ table). This file is the "how to work here" companion.
 1. **No primary keys, no unique constraints, no indexes anywhere.** The
    tables are loaded from the production app DB by an external import that
    re-inserts overlapping snapshots. Consequences:
-   - **Nearly every row is duplicated ~2–3×.** Never `count(*)` raw public
-     tables — you'll get ~3× inflation. Use the **`dedup.*` views**
+   - **Nearly every row is duplicated — and the factor keeps growing as the
+     importer re-runs.** Migration 018 measured ~3×; as of migration 046 it
+     is **~16×** (`chat_messages` 520,243 raw → 32,006 distinct ids;
+     `trust_ledger` 477,767 → 30,144; `pool_participants` 222,317 → 14,508).
+     Never `count(*)` raw public tables. Use the **`dedup.*` views**
      (migration 018): one row per production `id`. All KPI views and
-     analytics functions are built on `dedup.*`.
+     analytics functions are built on `dedup.*`. Re-measure before assuming
+     any row-count figure in an older migration comment still holds — 044
+     was written against "~71k events" and sized its query for that.
    - **Do not add PK/unique constraints** — they could make the importer's
      next run fail. Plain non-unique **indexes are fine** (they add no
      constraint) and are how we fixed query timeouts (migration 032).
@@ -56,9 +61,22 @@ table). This file is the "how to work here" companion.
    doesn't matter — `LIMIT 1` collapses duplicate snapshots). Keep
    `dedup.*` for the outer roster/counts. See migrations 031→033.
 
-3. **No page-visit / time-on-screen / reel / watch-time tracking exists.**
-   Not in any of the 73 tracked tables. Do **not** fabricate "time spent"
-   or "reel" metrics. The closest *real* intent signals that do exist:
+3. **View/dwell tracking exists — but only in `user_tag_affinity`.** This
+   entry used to say no page-visit or time-on-screen tracking existed
+   anywhere; that was wrong, and cost a round of investigation in the
+   migration-048 work. `public.user_tag_affinity` is one row per
+   (user, tag) with `view_count`, `like_count`, `join_count`,
+   `total_dwell_ms` and a blended `score`. Measured for non-bot users:
+   38,971 rows / 1,735 users / 120,977 views / ~462 h dwell, still being
+   written daily. `tags.category_id → tag_categories` rolls it up to 11
+   categories (Career, Personality, College, …), which is what the All
+   Users "Top category" column shows (migration 048).
+   Caveats before using it: **`chat_msg_count` and `dismiss_count` are 0
+   on every row** (never populated), coverage is only ~23% of non-bot
+   users (a NULL is absent signal, not zero interest), and the grain is
+   tag/category — there is still **no page-level, screen-level or
+   reel/watch-time tracking**, so don't fabricate those.
+   Other *real* intent signals:
    - PG search = `pg_hunt_queries` (has notify_phone, budget, timing)
    - Flat listing created = `pool_flat`
    - Flatmate listing created = `pool_flatmate`
@@ -161,10 +179,31 @@ migration table.
   Vercel runtime logs / `get_runtime_errors` for the real Postgres message
   before guessing — that's how the All Users `statement timeout` was found
   (don't assume "schema cache").
-- **`statement_timeout`**: the SQL editor (postgres role) has a long/no
-  timeout, but `service_role` via PostgREST has a short one. A query that
-  "works in the editor" can still time out in the app — test performance,
-  not just correctness.
+- **`statement_timeout` is exactly 8s for the app.** The SQL editor runs as
+  `postgres` (long/no timeout), but PostgREST connects as `authenticator`,
+  which carries `statement_timeout=8s`; `service_role` has no `rolconfig` of
+  its own, so it inherits that 8s. (`anon` is 3s, `authenticated` 8s.) A query
+  that "works in the editor" can still time out in the app — test
+  performance, not just correctness.
+- **Measure cold, not warm — and fix the I/O, not just the CPU.** This is a
+  small/free-tier instance with modest shared buffers, and pages get visited
+  rarely enough that the cache is effectively cold every time.
+  `analytics_all_users_engagement` ran ~0.7s warm but **9.0s cold** — over
+  the 8s budget, so it failed on every real visit while looking fine on a
+  re-run. Run a candidate query three times and quote the *first* number.
+  Note that removing CPU work is not automatically enough: migration 046 cut
+  ~19s of aggregation and the query was *still* 14s cold, because what
+  remained was 350 scattered random reads (a 7-way LATERAL over 50 rows) plus
+  a 102k-row index scan just to build the deduped roster. When cold I/O is
+  the cost, the only reliable fix is to stop touching the big tables at
+  request time — precompute into a small MV (047 got the whole page down to
+  890 kB) rather than shaving the margin.
+- **Diagnosing perf needs a real connection, not guesswork.** `.env.local`
+  has `SUPABASE_READONLY_DB_URL`; with the `pg` package already in
+  `node_modules` you can `SET statement_timeout` and time candidate queries
+  directly (that's how the 8s/9s numbers above were obtained). Note the
+  `SUPABASE_DB_CA_CERT` in `.env.local` is multi-line, so a naive
+  `KEY=VALUE` env parser will truncate it and TLS verification will fail.
 - **Vercel MCP** (project `analytics-dashboard-pp`, team
   `latharrr's projects`): use `get_runtime_errors` / `get_runtime_logs` to
   diagnose production issues directly instead of guessing.

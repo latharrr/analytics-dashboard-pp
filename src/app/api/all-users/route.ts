@@ -10,6 +10,7 @@ const ALLOWED_SORT: AllUsersSortBy[] = [
   "activities",
   "engagement_density",
   "retention_score",
+  "category_views",
 ];
 const ALLOWED_FILTERS: ActivityFilter[] = ["all", "active", "inactive"];
 
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
       lastActiveFrom: params.get("lastActiveFrom") || undefined,
       lastActiveTo: params.get("lastActiveTo") || undefined,
       activityFilter,
+      categoryFilter: params.get("categoryFilter") || undefined,
       sortBy,
       sortDir,
     },

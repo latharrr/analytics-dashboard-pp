@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { formatAsOf, formatRelativeTime } from "@/lib/format";
 import { Spinner } from "@/components/Spinner";
 import { ExportButton } from "@/components/ExportButton";
@@ -15,7 +16,8 @@ type SortBy =
   | "trust_score"
   | "activities"
   | "engagement_density"
-  | "retention_score";
+  | "retention_score"
+  | "category_views";
 type SortDir = "asc" | "desc";
 type ActivityFilter = "all" | "active" | "inactive";
 
@@ -36,6 +38,10 @@ interface ApiUser {
   lastActivityType: string | null;
   lastActivityDetail: string | null;
   lastActivityOccurredAt: string | null;
+  topCategory: string | null;
+  topCategoryViews: number | null;
+  topCategoryDwellMs: number | null;
+  categoryCount: number;
 }
 
 interface ApiResponse {
@@ -43,6 +49,12 @@ interface ApiResponse {
   totalCount: number;
   page: number;
   pageSize: number;
+}
+
+interface CategoryOption {
+  category: string;
+  userCount: number;
+  totalViews: number;
 }
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
@@ -53,6 +65,7 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: "activities", label: "No. of activities" },
   { value: "engagement_density", label: "Engagement density" },
   { value: "retention_score", label: "Retention score" },
+  { value: "category_views", label: "Top-category views" },
 ];
 
 const ACTIVITY_OPTIONS: { value: ActivityFilter; label: string }[] = [
@@ -62,12 +75,17 @@ const ACTIVITY_OPTIONS: { value: ActivityFilter; label: string }[] = [
 ];
 
 export function AllUsersView() {
+  // Category Intent links here as /all-users?category=<label> to drill into the
+  // users behind a category, so seed the filter from the URL on first render.
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [signedUpFrom, setSignedUpFrom] = useState("");
   const [signedUpTo, setSignedUpTo] = useState("");
   const [lastActiveFrom, setLastActiveFrom] = useState("");
   const [lastActiveTo, setLastActiveTo] = useState("");
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState(() => searchParams.get("category") ?? "");
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [sortBy, setSortBy] = useState<SortBy>("last_active");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
@@ -75,9 +93,17 @@ export function AllUsersView() {
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  // Category list is static between nightly refreshes, so fetch it once.
+  useEffect(() => {
+    fetch("/api/all-users/categories")
+      .then((res) => res.json())
+      .then((json: { categories: CategoryOption[] }) => setCategories(json.categories ?? []))
+      .catch((err) => console.error(err));
+  }, []);
+
   useEffect(() => {
     setPage(1);
-  }, [search, signedUpFrom, signedUpTo, lastActiveFrom, lastActiveTo, activityFilter, sortBy, sortDir]);
+  }, [search, signedUpFrom, signedUpTo, lastActiveFrom, lastActiveTo, activityFilter, categoryFilter, sortBy, sortDir]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -88,6 +114,7 @@ export function AllUsersView() {
     params.set("sortBy", sortBy);
     params.set("sortDir", sortDir);
     params.set("activityFilter", activityFilter);
+    if (categoryFilter) params.set("categoryFilter", categoryFilter);
     if (search.trim()) params.set("search", search.trim());
     if (signedUpFrom) params.set("signedUpFrom", new Date(signedUpFrom).toISOString());
     if (signedUpTo) params.set("signedUpTo", new Date(signedUpTo).toISOString());
@@ -111,23 +138,51 @@ export function AllUsersView() {
       clearTimeout(timeout);
       controller.abort();
     };
-  }, [search, signedUpFrom, signedUpTo, lastActiveFrom, lastActiveTo, activityFilter, sortBy, sortDir, page]);
+  }, [
+    search,
+    signedUpFrom,
+    signedUpTo,
+    lastActiveFrom,
+    lastActiveTo,
+    activityFilter,
+    categoryFilter,
+    sortBy,
+    sortDir,
+    page,
+  ]);
 
   const exportParams = useMemo(() => {
     const params = new URLSearchParams();
     params.set("sortBy", sortBy);
     params.set("sortDir", sortDir);
     params.set("activityFilter", activityFilter);
+    if (categoryFilter) params.set("categoryFilter", categoryFilter);
     if (search.trim()) params.set("search", search.trim());
     if (signedUpFrom) params.set("signedUpFrom", new Date(signedUpFrom).toISOString());
     if (signedUpTo) params.set("signedUpTo", new Date(signedUpTo).toISOString());
     if (lastActiveFrom) params.set("lastActiveFrom", new Date(lastActiveFrom).toISOString());
     if (lastActiveTo) params.set("lastActiveTo", new Date(lastActiveTo).toISOString());
     return params.toString();
-  }, [search, signedUpFrom, signedUpTo, lastActiveFrom, lastActiveTo, activityFilter, sortBy, sortDir]);
+  }, [
+    search,
+    signedUpFrom,
+    signedUpTo,
+    lastActiveFrom,
+    lastActiveTo,
+    activityFilter,
+    categoryFilter,
+    sortBy,
+    sortDir,
+  ]);
 
   const hasFilters =
-    search || signedUpFrom || signedUpTo || lastActiveFrom || lastActiveTo || activityFilter !== "all";
+    search ||
+    signedUpFrom ||
+    signedUpTo ||
+    lastActiveFrom ||
+    lastActiveTo ||
+    activityFilter !== "all" ||
+    categoryFilter !== "";
   const totalPages = data ? Math.max(1, Math.ceil(data.totalCount / data.pageSize)) : 1;
 
   function toggleUser(userId: string) {
@@ -203,6 +258,22 @@ export function AllUsersView() {
           </select>
         </div>
         <div>
+          <label className="mb-1 block text-xs font-medium text-ink-muted">Category interest</label>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="rounded-lg border border-border bg-surface px-2 py-1 text-sm text-ink"
+          >
+            <option value="">Any category</option>
+            {categories.map((c) => (
+              <option key={c.category} value={c.category}>
+                {c.category} ({c.userCount.toLocaleString()})
+              </option>
+            ))}
+            <option value="none">No category signal</option>
+          </select>
+        </div>
+        <div>
           <label className="mb-1 block text-xs font-medium text-ink-muted">Sort by</label>
           <div className="flex gap-2">
             <select
@@ -235,6 +306,7 @@ export function AllUsersView() {
               setLastActiveFrom("");
               setLastActiveTo("");
               setActivityFilter("all");
+              setCategoryFilter("");
             }}
             className="rounded-lg border border-border px-2 py-1.5 text-xs text-ink-muted hover:bg-surface"
           >
@@ -289,6 +361,12 @@ export function AllUsersView() {
               >
                 Retention
               </th>
+              <th
+                className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink"
+                title="Category the user views most, from their per-tag affinity rolled up to its tag category. Shows views (and dwell time on hover). Blank = no category signal recorded for this user."
+              >
+                Top category
+              </th>
               <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">
                 Last activity
               </th>
@@ -299,7 +377,7 @@ export function AllUsersView() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={12} className="p-4 text-center text-ink-muted">
+                <td colSpan={13} className="p-4 text-center text-ink-muted">
                   <span className="inline-flex items-center gap-2">
                     <Spinner className="h-4 w-4" /> Loading…
                   </span>
@@ -340,6 +418,30 @@ export function AllUsersView() {
                       >
                         {u.retentionScore != null ? u.retentionScore.toFixed(3) : "—"}
                       </td>
+                      <td
+                        className="whitespace-nowrap p-2 text-ink"
+                        title={
+                          u.topCategory
+                            ? `${u.topCategoryViews?.toLocaleString() ?? 0} views` +
+                              (u.topCategoryDwellMs
+                                ? `, ${(u.topCategoryDwellMs / 60000).toFixed(1)} min dwell`
+                                : "") +
+                              ` · ${u.categoryCount} categor${u.categoryCount === 1 ? "y" : "ies"} viewed`
+                            : "No category signal recorded"
+                        }
+                      >
+                        {u.topCategory ? (
+                          <span>
+                            {u.topCategory}
+                            <span className="text-ink-muted">
+                              {" "}
+                              · {(u.topCategoryViews ?? 0).toLocaleString()}
+                            </span>
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="p-2 text-ink">
                         {u.lastActivityType ? (
                           <span>
@@ -355,13 +457,13 @@ export function AllUsersView() {
                         {u.isBanned ? "Banned" : u.isVerified ? "Verified" : "—"}
                       </td>
                     </tr>
-                    {isOpen && <UserActivityDetail userId={u.userId} colSpan={12} />}
+                    {isOpen && <UserActivityDetail userId={u.userId} colSpan={13} />}
                   </Fragment>
                 );
               })}
             {!loading && data?.users.length === 0 && (
               <tr>
-                <td colSpan={12} className="p-4 text-center text-ink-muted">
+                <td colSpan={13} className="p-4 text-center text-ink-muted">
                   No users match.
                 </td>
               </tr>
@@ -395,7 +497,12 @@ export function AllUsersView() {
         calendar days with any such activity — only days the user was actually active, no interpolation.{" "}
         <b>Density</b> = activities ÷ active days. <b>Retention</b> = active days ÷ days since signup. &ldquo;Inactive&rdquo;
         means zero tracked activity. All sortable. CSV/Sheet export includes up to 10,000 users matching the current
-        filters (not just this page).
+        filters (not just this page). <b>Top category</b> = the content category the user views most, from their
+        per-tag affinity rolled up to its tag category, shown with that category&rsquo;s view count; ranked by views,
+        so it answers &ldquo;what are they actually looking at&rdquo;. Only about 1 in 4 users has any category
+        signal — the rest show &ldquo;—&rdquo;, which is a real absence of data, not zero interest. Activity counts
+        and category interest come from the nightly refresh (see &ldquo;Last refreshed&rdquo; above); signup, last
+        visit and the Last activity column are live.
       </p>
     </div>
   );

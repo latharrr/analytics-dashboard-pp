@@ -14,6 +14,7 @@ const ALLOWED_SORT: AllUsersSortBy[] = [
   "activities",
   "engagement_density",
   "retention_score",
+  "category_views",
 ];
 const ALLOWED_FILTERS: ActivityFilter[] = ["all", "active", "inactive"];
 
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
       lastActiveFrom: params.get("lastActiveFrom") || undefined,
       lastActiveTo: params.get("lastActiveTo") || undefined,
       activityFilter,
+      categoryFilter: params.get("categoryFilter") || undefined,
       sortBy,
       sortDir,
     },
@@ -69,6 +71,11 @@ export async function GET(request: NextRequest) {
       last_activity_type: u.lastActivityType,
       last_activity_detail: u.lastActivityDetail,
       last_activity_at: u.lastActivityOccurredAt,
+      top_category: u.topCategory,
+      top_category_views: u.topCategoryViews,
+      top_category_dwell_minutes:
+        u.topCategoryDwellMs != null ? Math.round(u.topCategoryDwellMs / 6000) / 10 : null,
+      categories_viewed: u.categoryCount,
       user_id: u.userId,
     })),
     "all-users"

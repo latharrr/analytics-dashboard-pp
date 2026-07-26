@@ -17,6 +17,12 @@ export interface AllUser {
   lastActivityType: string | null;
   lastActivityDetail: string | null;
   lastActivityOccurredAt: string | null;
+  /** Category the user views most (tag_categories via user_tag_affinity). Null = no signal at all. */
+  topCategory: string | null;
+  topCategoryViews: number | null;
+  topCategoryDwellMs: number | null;
+  /** How many distinct categories the user has viewed at least once. */
+  categoryCount: number;
 }
 
 export interface AllUsersResult {
@@ -31,7 +37,8 @@ export type AllUsersSortBy =
   | "trust_score"
   | "activities"
   | "engagement_density"
-  | "retention_score";
+  | "retention_score"
+  | "category_views";
 export type SortDir = "asc" | "desc";
 export type ActivityFilter = "all" | "active" | "inactive";
 
@@ -42,6 +49,8 @@ export interface AllUsersFilters {
   lastActiveFrom?: string;
   lastActiveTo?: string;
   activityFilter?: ActivityFilter;
+  /** A tag_categories label, or "none" for users with no category signal. */
+  categoryFilter?: string;
   sortBy?: AllUsersSortBy;
   sortDir?: SortDir;
 }
@@ -70,6 +79,10 @@ interface DetailRow {
   last_activity_type: string | null;
   last_activity_detail: string | null;
   last_activity_occurred_at: string | null;
+  top_category: string | null;
+  top_category_views: number | string | null;
+  top_category_dwell_ms: number | string | null;
+  category_count: number | string | null;
   total_count: number;
 }
 
@@ -94,6 +107,7 @@ export async function getAllUsers(
     last_active_from: filters.lastActiveFrom ?? null,
     last_active_to: filters.lastActiveTo ?? null,
     activity_filter: filters.activityFilter ?? "all",
+    category_filter: filters.categoryFilter ?? null,
     sort_by: filters.sortBy ?? "last_active",
     sort_dir: filters.sortDir ?? "desc",
     page_number: page,
@@ -136,7 +150,33 @@ function mapRow(r: DetailRow): AllUser {
     lastActivityType: r.last_activity_type,
     lastActivityDetail: r.last_activity_detail,
     lastActivityOccurredAt: r.last_activity_occurred_at,
+    topCategory: r.top_category,
+    topCategoryViews: toNum(r.top_category_views),
+    topCategoryDwellMs: toNum(r.top_category_dwell_ms),
+    categoryCount: toNum(r.category_count) ?? 0,
   };
+}
+
+/** The category list backing the filter dropdown, ordered by how many users each covers. */
+export interface CategoryOption {
+  category: string;
+  userCount: number;
+  totalViews: number;
+}
+
+export async function getAllUsersCategories(): Promise<CategoryOption[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("analytics_all_users_categories");
+  if (error) {
+    console.error("getAllUsersCategories failed:", error.message);
+    return [];
+  }
+  if (!data) return [];
+  return (data as { category: string; user_count: number | string; total_views: number | string }[]).map((r) => ({
+    category: r.category,
+    userCount: toNum(r.user_count) ?? 0,
+    totalViews: toNum(r.total_views) ?? 0,
+  }));
 }
 
 /** PostgREST caps every response (including RPC results) at this project's "Max rows = 1000", so a single call can never return more than 1000 rows regardless of the SQL-side page_size. */
