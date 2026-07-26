@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { formatRelativeTime } from "@/lib/format";
+import { formatAsOf, formatRelativeTime } from "@/lib/format";
 import { Spinner } from "@/components/Spinner";
 
 interface CategoryRow {
@@ -28,6 +28,24 @@ interface PoolCategoryRow {
   isListingOnly: boolean;
   newestPoolAt: string | null;
   newestJoinAt: string | null;
+}
+
+interface PoolCategoryUser {
+  userId: string;
+  userName: string | null;
+  phone: string | null;
+  poolsCreated: number;
+  poolsJoined: number;
+  lastActivityAt: string | null;
+  trustScore: number | null;
+  isVerified: boolean;
+}
+
+interface PoolUsersState {
+  loading: boolean;
+  users: PoolCategoryUser[];
+  totalCount: number;
+  rowCap: number;
 }
 
 type Tab = "pool" | "content";
@@ -84,6 +102,43 @@ export function CategoryIntentView() {
       joins: rs.reduce((n, r) => n + r.joins, 0),
     };
   }, [poolRows]);
+
+  // Fetched per category on first expand, then kept so re-opening is instant.
+  const [poolUsers, setPoolUsers] = useState<Record<string, PoolUsersState>>({});
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleCategory = useCallback(
+    (slug: string) => {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (next.has(slug)) next.delete(slug);
+        else next.add(slug);
+        return next;
+      });
+      setPoolUsers((prev) => {
+        if (prev[slug]) return prev;
+        fetch(`/api/category-intent/users?category=${encodeURIComponent(slug)}`)
+          .then((res) => res.json())
+          .then((json: { users: PoolCategoryUser[]; totalCount: number; rowCap: number }) =>
+            setPoolUsers((p) => ({
+              ...p,
+              [slug]: {
+                loading: false,
+                users: json.users ?? [],
+                totalCount: json.totalCount ?? 0,
+                rowCap: json.rowCap ?? 500,
+              },
+            }))
+          )
+          .catch((err) => {
+            console.error(err);
+            setPoolUsers((p) => ({ ...p, [slug]: { loading: false, users: [], totalCount: 0, rowCap: 500 } }));
+          });
+        return { ...prev, [slug]: { loading: true, users: [], totalCount: 0, rowCap: 500 } };
+      });
+    },
+    []
+  );
 
   const sorted = useMemo(() => {
     if (!rows) return [];
@@ -154,6 +209,7 @@ export function CategoryIntentView() {
             <table className="w-full text-sm">
               <thead className="bg-surface-raised">
                 <tr>
+                  <th className="w-8 border-b border-border p-2" />
                   <th className="whitespace-nowrap border-b border-border p-2 text-left font-medium text-ink">
                     Category
                   </th>
@@ -189,7 +245,7 @@ export function CategoryIntentView() {
               <tbody>
                 {loading && (
                   <tr>
-                    <td colSpan={6} className="p-4 text-center text-ink-muted">
+                    <td colSpan={7} className="p-4 text-center text-ink-muted">
                       <span className="inline-flex items-center gap-2">
                         <Spinner className="h-4 w-4" /> Loading…
                       </span>
@@ -197,28 +253,124 @@ export function CategoryIntentView() {
                   </tr>
                 )}
                 {!loading &&
-                  visiblePoolRows.map((r) => (
-                    <tr key={r.categorySlug} className="border-b border-border last:border-0 hover:bg-surface-raised">
-                      <td className="whitespace-nowrap p-2 font-medium text-ink">{r.category}</td>
-                      <td className="whitespace-nowrap p-2 text-right text-ink">{r.pools.toLocaleString()}</td>
-                      <td className="whitespace-nowrap p-2 text-right text-ink">{r.creators.toLocaleString()}</td>
-                      <td
-                        className="whitespace-nowrap p-2 text-right text-ink"
-                        title={r.isListingOnly ? "Listing-type pools — nobody joins these, so this is not zero interest" : ""}
-                      >
-                        {r.isListingOnly ? <span className="text-ink-muted">n/a</span> : r.joins.toLocaleString()}
-                      </td>
-                      <td className="whitespace-nowrap p-2 text-right text-ink">
-                        {r.isListingOnly ? <span className="text-ink-muted">n/a</span> : r.joiners.toLocaleString()}
-                      </td>
-                      <td className="whitespace-nowrap p-2 text-ink-muted" title={r.newestPoolAt ?? ""}>
-                        {formatRelativeTime(r.newestPoolAt)}
-                      </td>
-                    </tr>
-                  ))}
+                  visiblePoolRows.map((r) => {
+                    const isOpen = expanded.has(r.categorySlug);
+                    const detail = poolUsers[r.categorySlug];
+                    return (
+                      <Fragment key={r.categorySlug}>
+                        <tr
+                          onClick={() => toggleCategory(r.categorySlug)}
+                          className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-raised"
+                          title="Click to see the users behind this category"
+                        >
+                          <td className="p-2 text-center text-ink-muted">{isOpen ? "▾" : "▸"}</td>
+                          <td className="whitespace-nowrap p-2 font-medium text-ink">{r.category}</td>
+                          <td className="whitespace-nowrap p-2 text-right text-ink">{r.pools.toLocaleString()}</td>
+                          <td className="whitespace-nowrap p-2 text-right text-ink">{r.creators.toLocaleString()}</td>
+                          <td
+                            className="whitespace-nowrap p-2 text-right text-ink"
+                            title={
+                              r.isListingOnly
+                                ? "Listing-type pools — nobody joins these, so this is not zero interest"
+                                : ""
+                            }
+                          >
+                            {r.isListingOnly ? <span className="text-ink-muted">n/a</span> : r.joins.toLocaleString()}
+                          </td>
+                          <td className="whitespace-nowrap p-2 text-right text-ink">
+                            {r.isListingOnly ? (
+                              <span className="text-ink-muted">n/a</span>
+                            ) : (
+                              r.joiners.toLocaleString()
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap p-2 text-ink-muted" title={r.newestPoolAt ?? ""}>
+                            {formatRelativeTime(r.newestPoolAt)}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="border-b border-border last:border-0">
+                            <td colSpan={7} className="bg-surface-raised/40 p-3">
+                              {detail?.loading && (
+                                <span className="inline-flex items-center gap-2 text-ink-muted">
+                                  <Spinner className="h-4 w-4" /> Loading users…
+                                </span>
+                              )}
+                              {detail && !detail.loading && detail.users.length === 0 && (
+                                <span className="text-ink-muted">No users found for this category.</span>
+                              )}
+                              {detail && !detail.loading && detail.users.length > 0 && (
+                                <div>
+                                  <p className="mb-2 text-xs text-ink-muted">
+                                    {detail.totalCount.toLocaleString()} user
+                                    {detail.totalCount === 1 ? "" : "s"} created or joined a pool in{" "}
+                                    <b>{r.category}</b>
+                                    {detail.totalCount > detail.users.length
+                                      ? ` — showing the top ${detail.users.length.toLocaleString()}`
+                                      : ""}
+                                    .
+                                  </p>
+                                  <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-surface-raised">
+                                        <tr>
+                                          <th className="border-b border-border p-2 text-left font-medium text-ink">
+                                            Name
+                                          </th>
+                                          <th className="border-b border-border p-2 text-left font-medium text-ink">
+                                            Phone
+                                          </th>
+                                          <th className="border-b border-border p-2 text-right font-medium text-ink">
+                                            Pools created
+                                          </th>
+                                          <th className="border-b border-border p-2 text-right font-medium text-ink">
+                                            Pools joined
+                                          </th>
+                                          <th className="border-b border-border p-2 text-left font-medium text-ink">
+                                            Last active here
+                                          </th>
+                                          <th className="border-b border-border p-2 text-left font-medium text-ink">
+                                            Trust
+                                          </th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {detail.users.map((u) => (
+                                          <tr key={u.userId} className="border-b border-border last:border-0">
+                                            <td className="whitespace-nowrap p-2 font-medium text-ink">
+                                              {u.userName ?? u.userId}
+                                              {u.isVerified && <span className="ml-1 text-ink-muted">✓</span>}
+                                            </td>
+                                            <td className="whitespace-nowrap p-2 text-ink">{u.phone ?? "—"}</td>
+                                            <td className="whitespace-nowrap p-2 text-right text-ink">
+                                              {u.poolsCreated.toLocaleString()}
+                                            </td>
+                                            <td className="whitespace-nowrap p-2 text-right text-ink">
+                                              {u.poolsJoined.toLocaleString()}
+                                            </td>
+                                            <td
+                                              className="whitespace-nowrap p-2 text-ink-muted"
+                                              title={u.lastActivityAt ? formatAsOf(u.lastActivityAt) : ""}
+                                            >
+                                              {formatRelativeTime(u.lastActivityAt)}
+                                            </td>
+                                            <td className="whitespace-nowrap p-2 text-ink">{u.trustScore ?? "—"}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 {!loading && visiblePoolRows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-4 text-center text-ink-muted">
+                    <td colSpan={7} className="p-4 text-center text-ink-muted">
                       No pools in this category.
                     </td>
                   </tr>
@@ -228,8 +380,10 @@ export function CategoryIntentView() {
           </div>
 
           <p className="mt-2 text-[11px] text-ink-muted/70">
-            The app&rsquo;s pool verticals, from <code>pools.category</code> — what users actually create and join, as
-            opposed to Content categories, which is what they browse. Bot accounts excluded.{" "}
+            <b>Click any category to see the users behind it</b> — who created pools there, who joined, and when they
+            were last active in it. The app&rsquo;s pool verticals, from <code>pools.category</code> — what users
+            actually create and join, as opposed to Content categories, which is what they browse. Bot accounts
+            excluded.{" "}
             <b>Flat, Flatmate and PG show &ldquo;n/a&rdquo; for joins because they are listing-type pools</b> — you post
             one, nobody joins it — so their real signal is pools created and distinct creators, not participation.{" "}
             <b>Ranting</b> is included even though it wasn&rsquo;t requested: it is the largest vertical by pools, and

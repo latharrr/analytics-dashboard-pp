@@ -116,3 +116,68 @@ export async function getPoolCategoryIntent(): Promise<PoolCategoryRow[]> {
     newestJoinAt: r.newest_join_at,
   }));
 }
+
+/** One user behind a pool category — who created and/or joined pools there (migration 051). */
+export interface PoolCategoryUser {
+  userId: string;
+  userName: string | null;
+  phone: string | null;
+  poolsCreated: number;
+  poolsJoined: number;
+  lastActivityAt: string | null;
+  trustScore: number | null;
+  isVerified: boolean;
+}
+
+export interface PoolCategoryUsersResult {
+  users: PoolCategoryUser[];
+  totalCount: number;
+}
+
+interface PoolUserRow {
+  user_id: string;
+  user_name: string | null;
+  phone: string | null;
+  pools_created: number | string;
+  pools_joined: number | string;
+  last_activity_at: string | null;
+  trust_score: number | null;
+  is_verified: boolean;
+  total_count: number | string;
+}
+
+/**
+ * The users behind one pool category, for the expand-on-click rows on Category
+ * Intent. Reads the precomputed mv_pool_category_users (2,441 rows across all
+ * categories), so this is a small indexed lookup rather than a live join over
+ * pools + pool_participants, which measured 1.2-2.0s warm per category.
+ */
+export async function getPoolCategoryUsers(
+  categorySlug: string,
+  rowLimit = 500
+): Promise<PoolCategoryUsersResult> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("analytics_pool_category_users", {
+    target_category: categorySlug,
+    row_limit: rowLimit,
+  });
+  if (error) {
+    console.error("getPoolCategoryUsers failed:", error.message);
+    return { users: [], totalCount: 0 };
+  }
+  if (!data) return { users: [], totalCount: 0 };
+  const rows = data as PoolUserRow[];
+  return {
+    users: rows.map((r) => ({
+      userId: r.user_id,
+      userName: r.user_name,
+      phone: r.phone,
+      poolsCreated: toNum(r.pools_created) ?? 0,
+      poolsJoined: toNum(r.pools_joined) ?? 0,
+      lastActivityAt: r.last_activity_at,
+      trustScore: r.trust_score,
+      isVerified: r.is_verified,
+    })),
+    totalCount: toNum(rows[0]?.total_count) ?? 0,
+  };
+}
