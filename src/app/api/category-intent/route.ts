@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCategoryIntent } from "@/lib/db/categoryIntent";
+import { getCategoryIntent, getPoolCategoryIntent } from "@/lib/db/categoryIntent";
 
 /**
  * Platform-wide category intent. Reads the precomputed mv_category_intent
@@ -12,6 +12,6 @@ import { getCategoryIntent } from "@/lib/db/categoryIntent";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const categories = await getCategoryIntent();
-  return NextResponse.json({ categories });
+  const [categories, poolCategories] = await Promise.all([getCategoryIntent(), getPoolCategoryIntent()]);
+  return NextResponse.json({ categories, poolCategories });
 }

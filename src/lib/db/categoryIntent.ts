@@ -63,3 +63,56 @@ export async function getCategoryIntent(): Promise<CategoryIntentRow[]> {
     topTags: r.top_tags,
   }));
 }
+
+/** One pool vertical (pools.category) — what users create and join, per migration 050. */
+export interface PoolCategoryRow {
+  categorySlug: string;
+  category: string;
+  pools: number;
+  creators: number;
+  joins: number;
+  joiners: number;
+  /** flat / flatmate / pg are listing-type pools nobody joins, so 0 joins is expected, not absent interest. */
+  isListingOnly: boolean;
+  newestPoolAt: string | null;
+  newestJoinAt: string | null;
+}
+
+interface PoolRow {
+  category_slug: string;
+  category: string;
+  pools: number | string;
+  creators: number | string;
+  joins: number | string;
+  joiners: number | string;
+  is_listing_only: boolean;
+  newest_pool_at: string | null;
+  newest_join_at: string | null;
+}
+
+/**
+ * Pool categories — a different dimension from getCategoryIntent(): that one is
+ * what users BROWSE (tag affinity, views/dwell), this is what they CREATE and
+ * JOIN (pools.category). No view/dwell data exists for pools, so the two are
+ * shown as separate tabs rather than merged into one table.
+ */
+export async function getPoolCategoryIntent(): Promise<PoolCategoryRow[]> {
+  const supabase = getServiceClient();
+  const { data, error } = await supabase.rpc("analytics_pool_category_intent");
+  if (error) {
+    console.error("getPoolCategoryIntent failed:", error.message);
+    return [];
+  }
+  if (!data) return [];
+  return (data as PoolRow[]).map((r) => ({
+    categorySlug: r.category_slug,
+    category: r.category,
+    pools: toNum(r.pools) ?? 0,
+    creators: toNum(r.creators) ?? 0,
+    joins: toNum(r.joins) ?? 0,
+    joiners: toNum(r.joiners) ?? 0,
+    isListingOnly: r.is_listing_only,
+    newestPoolAt: r.newest_pool_at,
+    newestJoinAt: r.newest_join_at,
+  }));
+}
